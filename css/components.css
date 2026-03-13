@@ -453,6 +453,86 @@ tr:hover {
   color: var(--text-light);
 }
 
+.paste-status {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-light);
+  line-height: 1.6;
+}
+
+.plan-paste-wrap {
+  margin-top: 14px;
+  border: 1px solid rgba(26, 35, 126, 0.12);
+  background: linear-gradient(180deg, #fbfcff, #f7f9fc);
+}
+
+.plan-paste-grid {
+  min-width: 1120px;
+}
+
+.plan-paste-grid th,
+.plan-paste-grid td {
+  border-bottom: 1px solid var(--gray-200);
+  border-right: 1px solid var(--gray-200);
+}
+
+.plan-paste-grid thead th {
+  background: var(--primary);
+  color: var(--white);
+}
+
+.plan-paste-th {
+  vertical-align: middle;
+}
+
+.plan-paste-group {
+  background: #33445f;
+  color: var(--white);
+  text-align: center;
+  font-weight: 800;
+  min-width: 64px;
+}
+
+.plan-paste-label {
+  background: #fff7bf;
+  color: var(--primary);
+  font-weight: 800;
+  min-width: 170px;
+}
+
+.plan-paste-label-muted {
+  background: #fff9de;
+  color: var(--primary-dark);
+}
+
+.plan-paste-grid td {
+  background: var(--white);
+  padding: 0;
+}
+
+.plan-paste-cell {
+  width: 100%;
+  min-width: 88px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 10px 8px;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.plan-paste-cell:focus {
+  outline: none;
+  background: #eef3ff;
+  box-shadow: inset 0 0 0 2px rgba(26, 35, 126, 0.16);
+}
+
+.plan-paste-cell.has-value {
+  color: #0f2f85;
+}
+
 .badge-red {
   background: #ffebee;
   color: var(--danger);

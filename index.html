@@ -43,6 +43,110 @@
       <section class="info-banner" id="dataBanner" hidden></section>
 
       <section class="tab-content active section-stack" id="tab-plan">
+        <article class="card">
+          <div class="table-toolbar">
+            <div class="card-title" style="margin: 0;"><span class="icon"></span>엑셀 복사/붙여넣기</div>
+            <div class="toolbar-actions">
+              <button class="btn btn-primary btn-sm" id="applyPlanPasteBtn" type="button">붙여넣은 값 적용</button>
+              <button class="btn btn-outline btn-sm" id="resetPlanPasteBtn" type="button">기본 데이터 복원</button>
+            </div>
+          </div>
+          <p class="page-note">
+            첨부 이미지 양식처럼 월 헤더와 `인천/포항`의 `국내고철 구매 계획`, `실적` 4개 행을 엑셀에서 그대로 복사한 뒤 아래 그리드 셀을 클릭하고 붙여넣으세요.
+            붙여넣은 값은 셀에서 직접 수정할 수 있고, 인천과 포항 값을 월별로 합산해 수급계획 차트와 누계 실적을 다시 계산합니다.
+          </p>
+          <div class="table-wrap plan-paste-wrap">
+            <table class="plan-paste-grid" id="planPasteGrid">
+              <thead>
+                <tr>
+                  <th rowspan="2" class="plan-paste-th text-center">구분</th>
+                  <th rowspan="2" class="plan-paste-th text-center">항목</th>
+                  <th colspan="12" class="plan-paste-th text-center">수량</th>
+                </tr>
+                <tr>
+                  <th class="text-right">1월</th>
+                  <th class="text-right">2월</th>
+                  <th class="text-right">3월</th>
+                  <th class="text-right">4월</th>
+                  <th class="text-right">5월</th>
+                  <th class="text-right">6월</th>
+                  <th class="text-right">7월</th>
+                  <th class="text-right">8월</th>
+                  <th class="text-right">9월</th>
+                  <th class="text-right">10월</th>
+                  <th class="text-right">11월</th>
+                  <th class="text-right">12월</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th rowspan="2" class="plan-paste-group">인천</th>
+                  <th class="plan-paste-label">국내고철 구매 계획</th>
+                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="0" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="1" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="2" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="3" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="4" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="5" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="6" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="7" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="8" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="9" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="10" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="11" inputmode="numeric"></td>
+                </tr>
+                <tr>
+                  <th class="plan-paste-label plan-paste-label-muted">실적</th>
+                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="0" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="1" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="2" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="3" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="4" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="5" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="6" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="7" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="8" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="9" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="10" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="11" inputmode="numeric"></td>
+                </tr>
+                <tr>
+                  <th rowspan="2" class="plan-paste-group">포항</th>
+                  <th class="plan-paste-label">국내고철 구매 계획</th>
+                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="0" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="1" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="2" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="3" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="4" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="5" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="6" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="7" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="8" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="9" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="10" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="11" inputmode="numeric"></td>
+                </tr>
+                <tr>
+                  <th class="plan-paste-label plan-paste-label-muted">실적</th>
+                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="0" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="1" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="2" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="3" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="4" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="5" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="6" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="7" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="8" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="9" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="10" inputmode="numeric"></td>
+                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="11" inputmode="numeric"></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="paste-status" id="planPasteStatus">현재는 기본 수급계획 데이터를 사용 중입니다.</div>
+        </article>
+
         <div class="kpi-row" id="planKpis"></div>
 
         <div class="grid-2">

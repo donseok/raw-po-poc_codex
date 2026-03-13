@@ -9,10 +9,13 @@
   const state = {
     supplierQuery: "",
     supplierGrade: "all",
-    tableSort: {}
+    tableSort: {},
+    planOverride: null
   };
   const DEFAULT_USER_DISPLAY = "동국제강 원료기획팀 | 이돈석 팀장님";
   const LEGACY_USER_DISPLAY = "동국제강 원료기획팀 | 이동석 팀장님";
+  const PLAN_PASTE_STORAGE_KEY = "planClipboardData";
+  const PLAN_GRID_ROWS = ["incheonPlan", "incheonActual", "pohangPlan", "pohangActual"];
   const colors = {
     primary: "#1a237e",
     primaryLight: "#283593",
@@ -255,6 +258,500 @@
     });
   }
 
+  function normalizeClipboardCell(value) {
+    return String(value ?? "").replace(/\r/g, "").trim();
+  }
+
+  function parseMonthHeader(value) {
+    const normalized = normalizeClipboardCell(value).replace(/\s+/g, "");
+    const match = normalized.match(/(\d{1,2})월$/);
+    if (!match) {
+      return null;
+    }
+    const month = Number(match[1]);
+    return month >= 1 && month <= 12 ? month : null;
+  }
+
+  function parseClipboardNumber(value) {
+    const normalized = normalizeClipboardCell(value).replace(/,/g, "").replace(/\s+/g, "");
+    if (!normalized) {
+      return null;
+    }
+    if (!/[0-9]/.test(normalized)) {
+      return null;
+    }
+    const parsed = Number(normalized.replace(/[^\d.-]/g, ""));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function extractMonthColumns(rows) {
+    let bestMatch = null;
+
+    rows.forEach((cells, rowIndex) => {
+      const found = [];
+      cells.forEach((cell, colIndex) => {
+        const month = parseMonthHeader(cell);
+        if (month !== null) {
+          found.push({ month, colIndex });
+        }
+      });
+
+      const uniqueByMonth = [];
+      const seenMonths = new Set();
+      found
+        .sort((left, right) => left.colIndex - right.colIndex)
+        .forEach((item) => {
+          if (!seenMonths.has(item.month)) {
+            seenMonths.add(item.month);
+            uniqueByMonth.push(item);
+          }
+        });
+
+      if (!bestMatch || uniqueByMonth.length > bestMatch.columns.length) {
+        bestMatch = { rowIndex, columns: uniqueByMonth };
+      }
+    });
+
+    return bestMatch && bestMatch.columns.length >= 6 ? bestMatch.columns : null;
+  }
+
+  function identifyPlanPasteRows(rows) {
+    const result = {
+      incheonPlan: null,
+      incheonActual: null,
+      pohangPlan: null,
+      pohangActual: null
+    };
+    let currentPlant = "";
+
+    rows.forEach((cells) => {
+      const metaTexts = cells
+        .map(normalizeClipboardCell)
+        .filter(Boolean)
+        .filter((cell) => parseMonthHeader(cell) === null && parseClipboardNumber(cell) === null);
+      if (!metaTexts.length) {
+        return;
+      }
+
+      const metaText = metaTexts.join(" ");
+      if (metaText.includes("인천")) {
+        currentPlant = "incheon";
+      } else if (metaText.includes("포항")) {
+        currentPlant = "pohang";
+      }
+
+      const rowType = metaText.includes("계획") ? "Plan" : metaText.includes("실적") ? "Actual" : "";
+      if (!currentPlant || !rowType) {
+        return;
+      }
+
+      result[`${currentPlant}${rowType}`] = cells;
+    });
+
+    return result;
+  }
+
+  function extractPlanRowValues(cells, monthColumns) {
+    if (!cells) {
+      return null;
+    }
+
+    if (monthColumns) {
+      const values = monthColumns.slice(0, 12).map(({ colIndex }) => parseClipboardNumber(cells[colIndex]));
+      return values.every((value) => value !== null) ? values : null;
+    }
+
+    const numericValues = cells
+      .map((cell) => parseClipboardNumber(cell))
+      .filter((value) => value !== null);
+    if (numericValues.length < 12) {
+      return null;
+    }
+    return numericValues.slice(-12);
+  }
+
+  function buildPlanOverrideDataset(parsedRows) {
+    let cumulativePlan = 0;
+    let cumulativeActual = 0;
+    const monthly = parsedRows.map((row, index) => {
+      const plan = row.incheonPlan + row.pohangPlan;
+      const actual = row.incheonActual + row.pohangActual;
+      cumulativePlan += plan;
+      cumulativeActual += actual;
+      return {
+        month: `${index + 1}월`,
+        incheonPlan: row.incheonPlan,
+        incheonActual: row.incheonActual,
+        pohangPlan: row.pohangPlan,
+        pohangActual: row.pohangActual,
+        plan,
+        actual,
+        cumulativePlan,
+        cumulativeActual,
+        achievementRate: cumulativePlan ? (cumulativeActual / cumulativePlan) * 100 : 0
+      };
+    });
+
+    return {
+      pastedAt: new Date().toISOString(),
+      monthly,
+      chart: {
+        labels: monthly.map((row) => row.month),
+        plan: monthly.map((row) => row.plan),
+        actual: monthly.map((row) => row.actual)
+      }
+    };
+  }
+
+  function parsePlanPasteText(rawText) {
+    const rows = rawText
+      .split(/\r?\n/)
+      .map((line) => line.split("\t").map(normalizeClipboardCell))
+      .filter((cells) => cells.some(Boolean));
+
+    if (!rows.length) {
+      throw new Error("붙여넣은 내용이 없습니다.");
+    }
+
+    const monthColumns = extractMonthColumns(rows);
+    if (monthColumns) {
+      const orderedMonths = monthColumns.slice(0, 12).map((item) => item.month);
+      const validMonths =
+        orderedMonths.length === 12 && orderedMonths.every((month, index) => month === index + 1);
+      if (!validMonths) {
+        throw new Error("월 헤더에서 1월부터 12월까지를 찾지 못했습니다.");
+      }
+    }
+
+    const identifiedRows = identifyPlanPasteRows(rows);
+    const missingRows = [
+      !identifiedRows.incheonPlan && "인천 계획",
+      !identifiedRows.incheonActual && "인천 실적",
+      !identifiedRows.pohangPlan && "포항 계획",
+      !identifiedRows.pohangActual && "포항 실적"
+    ].filter(Boolean);
+
+    if (missingRows.length) {
+      const numericRows = rows
+        .map((cells) => cells.map((cell) => parseClipboardNumber(cell)).filter((value) => value !== null))
+        .filter((values) => values.length >= 12)
+        .slice(0, 4);
+      if (numericRows.length === 4) {
+        return buildPlanOverrideDataset(
+          Array.from({ length: 12 }, (_, index) => ({
+            incheonPlan: numericRows[0][index],
+            incheonActual: numericRows[1][index],
+            pohangPlan: numericRows[2][index],
+            pohangActual: numericRows[3][index]
+          }))
+        );
+      }
+      throw new Error(`${missingRows.join(", ")} 행을 찾지 못했습니다.`);
+    }
+
+    const incheonPlan = extractPlanRowValues(identifiedRows.incheonPlan, monthColumns);
+    const incheonActual = extractPlanRowValues(identifiedRows.incheonActual, monthColumns);
+    const pohangPlan = extractPlanRowValues(identifiedRows.pohangPlan, monthColumns);
+    const pohangActual = extractPlanRowValues(identifiedRows.pohangActual, monthColumns);
+
+    if (!incheonPlan || !incheonActual || !pohangPlan || !pohangActual) {
+      throw new Error("월별 수량 12개를 정확히 읽지 못했습니다. 엑셀 범위를 다시 확인해주세요.");
+    }
+
+    return buildPlanOverrideDataset(
+      Array.from({ length: 12 }, (_, index) => ({
+        incheonPlan: incheonPlan[index],
+        incheonActual: incheonActual[index],
+        pohangPlan: pohangPlan[index],
+        pohangActual: pohangActual[index]
+      }))
+    );
+  }
+
+  function normalizePlanOverrideData(payload) {
+    if (!payload || typeof payload !== "object" || !Array.isArray(payload.monthly) || !payload.chart) {
+      return null;
+    }
+
+    const monthly = payload.monthly.map((row, index) => {
+      const month = normalizeClipboardCell(row.month) || `${index + 1}월`;
+      const numericKeys = [
+        "incheonPlan",
+        "incheonActual",
+        "pohangPlan",
+        "pohangActual",
+        "plan",
+        "actual",
+        "cumulativePlan",
+        "cumulativeActual",
+        "achievementRate"
+      ];
+      const normalizedRow = { month };
+      for (const key of numericKeys) {
+        const value = Number(row[key]);
+        if (!Number.isFinite(value)) {
+          return null;
+        }
+        normalizedRow[key] = value;
+      }
+      return normalizedRow;
+    });
+
+    if (monthly.length !== 12 || monthly.some((row) => !row)) {
+      return null;
+    }
+
+    return {
+      pastedAt: payload.pastedAt || new Date().toISOString(),
+      monthly,
+      chart: {
+        labels: monthly.map((row) => row.month),
+        plan: monthly.map((row) => row.plan),
+        actual: monthly.map((row) => row.actual)
+      }
+    };
+  }
+
+  function loadPlanOverride() {
+    try {
+      const raw = localStorage.getItem(PLAN_PASTE_STORAGE_KEY);
+      if (!raw) {
+        state.planOverride = null;
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      state.planOverride = normalizePlanOverrideData(parsed);
+      if (!state.planOverride) {
+        localStorage.removeItem(PLAN_PASTE_STORAGE_KEY);
+      }
+    } catch {
+      localStorage.removeItem(PLAN_PASTE_STORAGE_KEY);
+      state.planOverride = null;
+    }
+  }
+
+  function savePlanOverride(dataset) {
+    state.planOverride = dataset;
+    localStorage.setItem(PLAN_PASTE_STORAGE_KEY, JSON.stringify(dataset));
+  }
+
+  function clearPlanOverride() {
+    state.planOverride = null;
+    localStorage.removeItem(PLAN_PASTE_STORAGE_KEY);
+  }
+
+  function getActivePlanData() {
+    return state.planOverride || data.plan;
+  }
+
+  function getPlanPasteCell(rowKey, monthIndex) {
+    return document.querySelector(
+      `.plan-paste-cell[data-row="${rowKey}"][data-month="${monthIndex}"]`
+    );
+  }
+
+  function setPlanPasteCellValue(rowKey, monthIndex, value) {
+    const input = getPlanPasteCell(rowKey, monthIndex);
+    if (!input) {
+      return;
+    }
+    const hasValue = Number.isFinite(value);
+    input.value = hasValue ? formatNumber(value) : "";
+    input.classList.toggle("has-value", hasValue);
+  }
+
+  function fillPlanPasteGrid(dataset) {
+    if (!dataset || !Array.isArray(dataset.monthly)) {
+      return;
+    }
+    dataset.monthly.forEach((row, monthIndex) => {
+      setPlanPasteCellValue("incheonPlan", monthIndex, row.incheonPlan);
+      setPlanPasteCellValue("incheonActual", monthIndex, row.incheonActual);
+      setPlanPasteCellValue("pohangPlan", monthIndex, row.pohangPlan);
+      setPlanPasteCellValue("pohangActual", monthIndex, row.pohangActual);
+    });
+  }
+
+  function clearPlanPasteGrid() {
+    document.querySelectorAll(".plan-paste-cell").forEach((input) => {
+      input.value = "";
+      input.classList.remove("has-value");
+    });
+  }
+
+  function readPlanPasteGrid() {
+    const gridValues = {
+      incheonPlan: [],
+      incheonActual: [],
+      pohangPlan: [],
+      pohangActual: []
+    };
+
+    for (const rowKey of PLAN_GRID_ROWS) {
+      for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
+        const input = getPlanPasteCell(rowKey, monthIndex);
+        const value = parseClipboardNumber(input ? input.value : "");
+        if (value === null) {
+          return {
+            error: `${monthIndex + 1}월 ${rowKey === "incheonPlan"
+              ? "인천 계획"
+              : rowKey === "incheonActual"
+                ? "인천 실적"
+                : rowKey === "pohangPlan"
+                  ? "포항 계획"
+                  : "포항 실적"} 값이 비어 있습니다.`
+          };
+        }
+        gridValues[rowKey].push(value);
+      }
+    }
+
+    return buildPlanOverrideDataset(
+      Array.from({ length: 12 }, (_, monthIndex) => ({
+        incheonPlan: gridValues.incheonPlan[monthIndex],
+        incheonActual: gridValues.incheonActual[monthIndex],
+        pohangPlan: gridValues.pohangPlan[monthIndex],
+        pohangActual: gridValues.pohangActual[monthIndex]
+      }))
+    );
+  }
+
+  function markPlanPasteCell(input) {
+    if (!input) {
+      return;
+    }
+    const parsed = parseClipboardNumber(input.value);
+    if (parsed === null) {
+      input.value = "";
+      input.classList.remove("has-value");
+      return;
+    }
+    input.value = formatNumber(parsed);
+    input.classList.add("has-value");
+  }
+
+  function updatePlanPasteStatus() {
+    const status = document.getElementById("planPasteStatus");
+    if (!status) {
+      return;
+    }
+
+    if (!state.planOverride) {
+      status.textContent = "현재는 기본 수급계획 데이터를 사용 중입니다.";
+      return;
+    }
+
+    const pastedAt = new Date(state.planOverride.pastedAt);
+    status.textContent =
+      `최근 붙여넣기 적용: ${pastedAt.toLocaleString("ko-KR")} | 인천/포항 계획·실적 4개 행을 월별 합산해 반영했습니다.`;
+  }
+
+  function applyPlanPasteInput() {
+    const gridDataset = readPlanPasteGrid();
+    if (gridDataset.error) {
+      if (window.showToast) {
+        window.showToast(gridDataset.error, "error");
+      }
+      return;
+    }
+
+    savePlanOverride(gridDataset);
+    fillPlanPasteGrid(gridDataset);
+    updatePlanPasteStatus();
+    renderPlan();
+    if (window.showToast) {
+      window.showToast("그리드의 월별 계획/실적을 수급계획에 반영했습니다.", "success");
+    }
+  }
+
+  function resetPlanPasteInput() {
+    clearPlanPasteGrid();
+    clearPlanOverride();
+    updatePlanPasteStatus();
+    renderPlan();
+    if (window.showToast) {
+      window.showToast("수급계획을 기본 데이터로 복원했습니다.", "success");
+    }
+  }
+
+  function handlePlanGridPaste(event) {
+    const rawText = event.clipboardData?.getData("text/plain")?.trim();
+    if (!rawText) {
+      return;
+    }
+
+    event.preventDefault();
+
+    try {
+      const parsed = parsePlanPasteText(rawText);
+      fillPlanPasteGrid(parsed);
+      const status = document.getElementById("planPasteStatus");
+      if (status) {
+        status.textContent = "붙여넣기 완료. 값이 그리드에 채워졌습니다. 붙여넣은 값 적용 버튼을 누르면 수급계획에 반영됩니다.";
+      }
+      if (window.showToast) {
+        window.showToast("엑셀 값을 입력 그리드에 채웠습니다.", "success");
+      }
+    } catch (error) {
+      if (window.showToast) {
+        window.showToast(error.message || "엑셀 형식을 읽지 못했습니다.", "error");
+      }
+    }
+  }
+
+  function setupPlanPaste() {
+    loadPlanOverride();
+    clearPlanPasteGrid();
+    if (state.planOverride) {
+      fillPlanPasteGrid(state.planOverride);
+    }
+    updatePlanPasteStatus();
+
+    const applyButton = document.getElementById("applyPlanPasteBtn");
+    const resetButton = document.getElementById("resetPlanPasteBtn");
+    const grid = document.getElementById("planPasteGrid");
+
+    if (applyButton) {
+      applyButton.addEventListener("click", applyPlanPasteInput);
+    }
+    if (resetButton) {
+      resetButton.addEventListener("click", resetPlanPasteInput);
+    }
+    if (grid) {
+      grid.addEventListener("paste", handlePlanGridPaste);
+    }
+
+    document.querySelectorAll(".plan-paste-cell").forEach((input) => {
+      input.addEventListener("focus", () => input.select());
+      input.addEventListener("blur", () => {
+        markPlanPasteCell(input);
+        const status = document.getElementById("planPasteStatus");
+        if (status) {
+          status.textContent = "그리드 값을 수정했습니다. 붙여넣은 값 적용 버튼을 누르면 수급계획에 반영됩니다.";
+        }
+      });
+      input.addEventListener("input", () => {
+        input.classList.toggle("has-value", Boolean(normalizeClipboardCell(input.value)));
+        const status = document.getElementById("planPasteStatus");
+        if (status) {
+          status.textContent = "그리드 값을 수정했습니다. 붙여넣은 값 적용 버튼을 누르면 수급계획에 반영됩니다.";
+        }
+      });
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          input.blur();
+        }
+      });
+    });
+
+    if (!state.planOverride) {
+      document.querySelectorAll(".plan-paste-cell").forEach((input) => {
+        input.classList.remove("has-value");
+      });
+    }
+  }
+
   function getFilteredSuppliers() {
     const query = state.supplierQuery.trim().toLowerCase();
     return data.suppliers.table.filter((item) => {
@@ -405,8 +902,11 @@
   }
 
   function renderPlan() {
-    const overview = data.overview;
-    const planRows = data.plan.monthly;
+    const planData = getActivePlanData();
+    const planRows = planData.monthly;
+    const annualTarget = planRows.reduce((sum, row) => sum + row.plan, 0);
+    const cumulativeActual = planRows[planRows.length - 1].cumulativeActual;
+    const attainmentRate = planRows[planRows.length - 1].achievementRate;
     const bestMonth = [...planRows].sort((left, right) => right.actual - left.actual)[0];
     const weakestMonth = [...planRows].sort(
       (left, right) => left.achievementRate - right.achievementRate
@@ -416,25 +916,25 @@
     document.getElementById("planKpis").innerHTML = [
       kpiCard(
         "연간 목표",
-        `${overview.annualTargetDisplay}<small>톤</small>`,
-        "요청 슬라이드의 2024년 연간목표",
+        `${formatCompact(annualTarget)}<small>톤</small>`,
+        state.planOverride ? "엑셀 복붙 기준 연간 계획 합계" : "요청 슬라이드의 2024년 연간목표",
         ""
       ),
       kpiCard(
         "누계 실적",
-        `${overview.cumulativeActualDisplay}<small>톤</small>`,
-        "1번 화면 실적 누계",
+        `${formatCompact(cumulativeActual)}<small>톤</small>`,
+        state.planOverride ? "붙여넣은 실적 누계" : "1번 화면 실적 누계",
         "accent"
       ),
       kpiCard(
         "계획 대비 달성률",
-        `${overview.attainmentRateDisplay}<small></small>`,
+        `${formatPercent(attainmentRate, 1)}<small></small>`,
         "월 누계 계획 대비 누계 실적",
         "success"
       ),
       kpiCard(
         "거래처 평균 성과율",
-        `${overview.supplierPerformanceAvgDisplay}<small></small>`,
+        `${data.overview.supplierPerformanceAvgDisplay}<small></small>`,
         "3번 화면 납품 성과율 평균",
         "warning"
       )
@@ -487,18 +987,18 @@
     makeBarChart("planChart", "planChart", {
       type: "bar",
       data: {
-        labels: data.plan.chart.labels,
+        labels: planData.chart.labels,
         datasets: [
           {
             label: "실적",
-            data: data.plan.chart.actual,
+            data: planData.chart.actual,
             backgroundColor: "rgba(255, 143, 0, 0.72)",
             borderRadius: 8,
             order: 1
           },
           {
             label: "계획",
-            data: data.plan.chart.plan,
+            data: planData.chart.plan,
             backgroundColor: "rgba(26, 35, 126, 0.1)",
             borderColor: colors.primary,
             borderWidth: 2,
@@ -1087,6 +1587,7 @@
 
   function init() {
     window.refreshLoggedInUserDisplay = setDateAndUser;
+    setupPlanPaste();
     setDateAndUser();
     setBanner();
     setupSortableTables();
