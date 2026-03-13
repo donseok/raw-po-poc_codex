@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>부재료 실적 모니터링 대시보드</title>
+  <title>동국제강 원료기획팀 실적 모니터링 대시보드</title>
   <script>
     if (!sessionStorage.getItem("loggedInUser")) {
       location.href = "login.html";
@@ -20,13 +20,10 @@
     <header class="header">
       <div class="header-left">
         <div class="logo">동국제강 <span>DK</span></div>
-        <div class="header-sub">
-          첨부된 엑셀/요청 슬라이드를 기준으로 구성한 동국제강 원료기획팀 부재료 실적 모니터링 대시보드
-        </div>
       </div>
       <div class="header-right">
         <div class="header-chip" id="currentDate"></div>
-        <div class="header-chip" id="userDisplay">동국제강 원료기획팀 | 이동석 팀장님</div>
+        <div class="header-chip" id="userDisplay">동국제강 원료기획팀 | 이돈석 팀장님</div>
         <button class="btn btn-accent btn-sm" id="exportBtn">엑셀 내보내기</button>
         <button class="btn btn-outline btn-sm" id="logoutBtn">로그아웃</button>
       </div>
@@ -38,10 +35,12 @@
       <button class="tab-btn" data-tab="purchases">구매실적</button>
       <button class="tab-btn" data-tab="allocation">공장배분</button>
       <button class="tab-btn" data-tab="gradeImport">등급/수입관리</button>
+      <button class="tab-btn" data-tab="notice">공지사항</button>
+      <button class="tab-btn" data-tab="user">사용자관리</button>
     </nav>
 
     <main class="content">
-      <section class="info-banner" id="dataBanner"></section>
+      <section class="info-banner" id="dataBanner" hidden></section>
 
       <section class="tab-content active section-stack" id="tab-plan">
         <div class="kpi-row" id="planKpis"></div>
@@ -271,11 +270,304 @@
         </article>
       </section>
 
+      <section class="tab-content section-stack" id="tab-notice">
+        <div class="notice-calendar-grid">
+          <div class="notice-section">
+            <div class="toolbar">
+              <div class="card-title" style="margin: 0;"><span class="icon"></span>공지사항</div>
+              <button class="btn btn-primary" type="button" onclick="showNoticeForm()">+ 등록</button>
+            </div>
+            <article class="card">
+              <div id="noticeList"></div>
+              <div class="pagination" id="noticePagination"></div>
+            </article>
+          </div>
+
+          <div class="calendar-section">
+            <div class="toolbar">
+              <div class="card-title" style="margin: 0;"><span class="icon"></span>팀 일정관리</div>
+              <button class="btn btn-primary" type="button" onclick="showScheduleForm()">+ 일정 등록</button>
+            </div>
+            <article class="card">
+              <div class="calendar-nav">
+                <button class="btn btn-outline btn-sm" type="button" onclick="changeCalendarMonth(-1)">&laquo; 이전</button>
+                <span class="calendar-month-label" id="calendarMonthLabel"></span>
+                <button class="btn btn-outline btn-sm" type="button" onclick="changeCalendarMonth(1)">다음 &raquo;</button>
+              </div>
+              <table class="calendar-table">
+                <thead>
+                  <tr>
+                    <th>일</th>
+                    <th>월</th>
+                    <th>화</th>
+                    <th>수</th>
+                    <th>목</th>
+                    <th>금</th>
+                    <th>토</th>
+                  </tr>
+                </thead>
+                <tbody id="calendarBody"></tbody>
+              </table>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab-content section-stack" id="tab-user">
+        <div class="toolbar">
+          <div class="card-title" style="margin: 0;"><span class="icon"></span>사용자 관리</div>
+          <button class="btn btn-primary" type="button" onclick="showUserForm()">+ 사용자 등록</button>
+        </div>
+
+        <div class="kpi-row">
+          <article class="kpi-card" id="userKpi1"><div class="kpi-label">전체 사용자</div><div class="kpi-value">0<small>명</small></div></article>
+          <article class="kpi-card accent" id="userKpi2"><div class="kpi-label">활성 사용자</div><div class="kpi-value">0<small>명</small></div></article>
+          <article class="kpi-card success" id="userKpi3"><div class="kpi-label">관리자</div><div class="kpi-value">0<small>명</small></div></article>
+          <article class="kpi-card warning" id="userKpi4"><div class="kpi-label">비활성 사용자</div><div class="kpi-value">0<small>명</small></div></article>
+        </div>
+
+        <article class="card">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>아이디</th>
+                  <th>이름</th>
+                  <th>부서</th>
+                  <th>직급</th>
+                  <th>이메일</th>
+                  <th>연락처</th>
+                  <th class="text-center">권한</th>
+                  <th class="text-center">상태</th>
+                  <th>등록일</th>
+                  <th class="text-center">관리</th>
+                </tr>
+              </thead>
+              <tbody id="userTable"></tbody>
+            </table>
+          </div>
+          <div class="pagination" id="userPagination"></div>
+        </article>
+      </section>
+
       <p class="footer-note" id="footerNote"></p>
     </main>
   </div>
 
+  <div class="modal-overlay" id="userModal">
+    <div class="modal">
+      <button class="modal-close" type="button" onclick="hideModal('userModal')">&times;</button>
+      <div class="modal-title" id="userFormTitle">사용자 등록</div>
+      <div id="userForm" data-edit-id="">
+        <div class="form-row">
+          <div class="form-group">
+            <label>아이디 <span style="color: var(--danger)">*</span></label>
+            <input id="userIdInput" type="text" placeholder="영문, 숫자, 밑줄" maxlength="30">
+          </div>
+          <div class="form-group">
+            <label>비밀번호 <span style="color: var(--danger)">*</span></label>
+            <input id="userPasswordInput" type="password" placeholder="비밀번호 입력" maxlength="50">
+          </div>
+          <div class="form-group">
+            <label>이름 <span style="color: var(--danger)">*</span></label>
+            <input id="userNameInput" type="text" placeholder="홍길동" maxlength="20">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>부서 <span style="color: var(--danger)">*</span></label>
+            <select id="userDeptInput">
+              <option>원료기획팀</option>
+              <option>원료구매팀</option>
+              <option>생산관리팀</option>
+              <option>품질관리팀</option>
+              <option>경영기획팀</option>
+              <option>재무팀</option>
+              <option>IT팀</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>직급</label>
+            <select id="userPositionInput">
+              <option>사원</option>
+              <option>대리</option>
+              <option>과장</option>
+              <option>차장</option>
+              <option>부장</option>
+              <option>팀장</option>
+              <option>이사</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>권한</label>
+            <select id="userRoleInput">
+              <option value="user">일반 사용자</option>
+              <option value="admin">관리자</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>이메일</label>
+            <input id="userEmailInput" type="email" placeholder="user@dongkuk.com" maxlength="50">
+          </div>
+          <div class="form-group">
+            <label>연락처</label>
+            <input id="userPhoneInput" type="tel" placeholder="02-317-1000" maxlength="20">
+          </div>
+          <div class="form-group">
+            <label>상태</label>
+            <select id="userStatusInput">
+              <option value="active">활성</option>
+              <option value="inactive">비활성</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top: 16px; display: flex; gap: 8px;">
+        <button class="btn btn-primary" type="button" onclick="submitUser()">저장</button>
+        <button class="btn btn-outline" type="button" onclick="hideModal('userModal')">취소</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="noticeFormModal">
+    <div class="modal">
+      <button class="modal-close" type="button" onclick="hideModal('noticeFormModal')">&times;</button>
+      <div class="modal-title" id="noticeFormTitle">공지사항 등록</div>
+      <div id="noticeForm" data-edit-id="">
+        <div class="form-group">
+          <label>제목 <span style="color: var(--danger)">*</span></label>
+          <input id="noticeTitle" type="text" placeholder="공지 제목을 입력하세요" maxlength="100">
+        </div>
+        <div class="form-group">
+          <label>내용</label>
+          <textarea id="noticeContent" placeholder="공지 내용을 입력하세요" rows="6"></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>작성자 <span style="color: var(--danger)">*</span></label>
+            <input id="noticeAuthor" type="text" placeholder="이름" maxlength="20">
+          </div>
+          <div class="form-group">
+            <label>비밀번호 <span style="color: var(--danger)">*</span></label>
+            <input id="noticePassword" type="password" placeholder="수정/삭제 시 필요">
+            <div class="field-hint" id="noticePasswordHint" style="display: none;">기존 비밀번호를 입력해주세요</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+          <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; margin: 0; font-size: 13px; font-weight: 400;">
+            <input id="noticePinned" type="checkbox" style="margin: 0; width: 16px; height: 16px;">
+            <span class="badge badge-red">필독</span> 상단 고정
+          </label>
+        </div>
+      </div>
+      <div style="margin-top: 20px; display: flex; gap: 8px;">
+        <button class="btn btn-primary" type="button" onclick="submitNotice()">저장</button>
+        <button class="btn btn-outline" type="button" onclick="hideModal('noticeFormModal')">취소</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="noticeViewModal">
+    <div class="modal">
+      <button class="modal-close" type="button" onclick="hideModal('noticeViewModal')">&times;</button>
+      <div style="margin-bottom: 16px;">
+        <span class="badge badge-red" id="viewNoticePinned" style="margin-bottom: 8px; display: none;">필독</span>
+        <div class="notice-detail-title" id="viewNoticeTitle"></div>
+        <div class="notice-detail-meta" id="viewNoticeMeta"></div>
+      </div>
+      <div class="notice-detail-content" id="viewNoticeContent"></div>
+      <div id="viewNoticeActions" data-notice-id="" style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--gray-200); display: flex; gap: 8px;">
+        <button class="btn btn-outline btn-sm" type="button" onclick="promptEditNotice()">수정</button>
+        <button class="btn btn-danger btn-sm" type="button" onclick="promptDeleteNotice()">삭제</button>
+        <button class="btn btn-outline btn-sm" type="button" style="margin-left: auto;" onclick="hideModal('noticeViewModal')">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="noticeDeleteModal">
+    <div class="modal" style="max-width: 400px;">
+      <button class="modal-close" type="button" onclick="hideModal('noticeDeleteModal')">&times;</button>
+      <div class="modal-title">공지사항 삭제</div>
+      <p style="font-size: 14px; color: var(--text); margin-bottom: 16px;">삭제하려면 게시글 비밀번호를 입력하세요.</p>
+      <div class="form-group">
+        <label>비밀번호</label>
+        <input id="deletePassword" type="password" placeholder="비밀번호 입력">
+      </div>
+      <div id="deleteNoticeConfirm" data-notice-id="" style="display: flex; gap: 8px;">
+        <button class="btn btn-danger" type="button" onclick="confirmDeleteNotice()">삭제</button>
+        <button class="btn btn-outline" type="button" onclick="hideModal('noticeDeleteModal')">취소</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="scheduleFormModal">
+    <div class="modal" style="max-width: 480px;">
+      <button class="modal-close" type="button" onclick="hideModal('scheduleFormModal')">&times;</button>
+      <div class="modal-title">일정 등록</div>
+      <div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>팀원 <span style="color: var(--danger)">*</span></label>
+            <select id="scheduleMember">
+              <option value="">선택</option>
+              <option>이돈석</option>
+              <option>박영수</option>
+              <option>박지영</option>
+              <option>유남</option>
+              <option>김민재</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>구분 <span style="color: var(--danger)">*</span></label>
+            <select id="scheduleType" onchange="toggleEndDateGroup()">
+              <option value="">선택</option>
+              <option value="오전반차">오전반차</option>
+              <option value="오후반차">오후반차</option>
+              <option value="반반차1">반반차 1</option>
+              <option value="반반차2">반반차 2</option>
+              <option value="반반차3">반반차 3</option>
+              <option value="반반차4">반반차 4</option>
+              <option value="휴가">휴가</option>
+              <option value="교육">교육</option>
+              <option value="출장">출장</option>
+              <option value="외근">외근</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>시작일 <span style="color: var(--danger)">*</span></label>
+            <input id="scheduleStartDate" type="date">
+          </div>
+          <div class="form-group" id="scheduleEndDateGroup" style="display: none;">
+            <label>종료일</label>
+            <input id="scheduleEndDate" type="date">
+            <div class="field-hint">미입력 시 시작일과 동일</div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top: 16px; display: flex; gap: 8px;">
+        <button class="btn btn-primary" type="button" onclick="submitSchedule()">등록</button>
+        <button class="btn btn-outline" type="button" onclick="hideModal('scheduleFormModal')">취소</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="scheduleDetailModal">
+    <div class="modal" style="max-width: 500px;">
+      <button class="modal-close" type="button" onclick="hideModal('scheduleDetailModal')">&times;</button>
+      <div class="modal-title" id="scheduleDetailTitle"></div>
+      <div id="scheduleDetailList"></div>
+      <div style="margin-top: 16px; text-align: right;">
+        <button class="btn btn-outline btn-sm" type="button" onclick="hideModal('scheduleDetailModal')">닫기</button>
+      </div>
+    </div>
+  </div>
+
   <script src="js/dashboard-data.js"></script>
+  <script src="js/admin-features.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

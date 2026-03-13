@@ -211,21 +211,94 @@
     const errorBox = document.getElementById("errorBox");
     const quickLoginBtn = document.getElementById("quickLoginBtn");
 
-    function loginAsDemoUser() {
-      sessionStorage.setItem("loggedInUser", "동국제강 원료기획팀 | 이동석 팀장님");
+    const fallbackUsers = [
+      {
+        id: "dongkuk1",
+        password: "1234",
+        name: "이돈석 팀장",
+        dept: "원료기획팀",
+        role: "admin",
+        status: "active"
+      },
+      {
+        id: "dongkuk2",
+        password: "1234",
+        name: "박영수 대리",
+        dept: "원료기획팀",
+        role: "user",
+        status: "active"
+      }
+    ];
+
+    function getRegisteredUsers() {
+      try {
+        const raw = localStorage.getItem("usersData");
+        if (!raw) {
+          return null;
+        }
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed.data) && parsed.data.length ? parsed.data : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function findUser(userId, password) {
+      const registeredUsers = getRegisteredUsers();
+      const source = registeredUsers || fallbackUsers;
+      const user = source.find((item) => item.id === userId && item.password === password);
+      if (!user) {
+        return null;
+      }
+      if (user.status === "inactive") {
+        return { blocked: true };
+      }
+      const displayName = user.position ? `${user.name} ${user.position}` : user.name;
+      return {
+        id: user.id,
+        name: displayName,
+        dept: user.dept || "원료기획팀",
+        role: user.role || "user"
+      };
+    }
+
+    function loginUser(user) {
+      sessionStorage.setItem(
+        "loggedInUser",
+        JSON.stringify({
+          id: user.id,
+          name: user.name,
+          dept: user.dept,
+          role: user.role
+        })
+      );
       location.href = "index.html";
+    }
+
+    function loginAsDemoUser() {
+      const demoUser = findUser("dongkuk1", "1234");
+      if (demoUser && !demoUser.blocked) {
+        loginUser(demoUser);
+        return;
+      }
+      errorBox.textContent = "기본 계정 정보를 확인할 수 없습니다.";
+      errorBox.classList.add("show");
     }
 
     form.addEventListener("submit", function (event) {
       event.preventDefault();
       const userId = document.getElementById("userId").value.trim().toLowerCase();
       const password = document.getElementById("password").value.trim();
+      const user = findUser(userId, password);
 
-      if (userId === "dongkuk1" && password === "1234") {
-        loginAsDemoUser();
+      if (user && !user.blocked) {
+        loginUser(user);
         return;
       }
 
+      errorBox.textContent = user && user.blocked
+        ? "비활성화된 계정입니다. 관리자에게 문의하세요."
+        : "아이디 또는 비밀번호가 올바르지 않습니다.";
       errorBox.classList.add("show");
     });
 

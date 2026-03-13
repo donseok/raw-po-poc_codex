@@ -11,6 +11,8 @@
     supplierGrade: "all",
     tableSort: {}
   };
+  const DEFAULT_USER_DISPLAY = "동국제강 원료기획팀 | 이돈석 팀장님";
+  const LEGACY_USER_DISPLAY = "동국제강 원료기획팀 | 이동석 팀장님";
   const colors = {
     primary: "#1a237e",
     primaryLight: "#283593",
@@ -32,7 +34,9 @@
     suppliers: "거래처관리",
     purchases: "구매실적",
     allocation: "공장배분",
-    gradeImport: "등급/수입관리"
+    gradeImport: "등급/수입관리",
+    notice: "공지사항",
+    user: "사용자관리"
   };
 
   const valueLabelPlugin = {
@@ -325,6 +329,57 @@
     });
   }
 
+  function readStoredUsers() {
+    try {
+      const raw = localStorage.getItem("usersData");
+      if (!raw) {
+        return null;
+      }
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed.data) ? parsed.data : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function getUserDisplayText() {
+    const storedUser = sessionStorage.getItem("loggedInUser");
+    if (!storedUser) {
+      return DEFAULT_USER_DISPLAY;
+    }
+    if (storedUser === LEGACY_USER_DISPLAY) {
+      sessionStorage.setItem("loggedInUser", DEFAULT_USER_DISPLAY);
+      return DEFAULT_USER_DISPLAY;
+    }
+
+    try {
+      const parsedUser = JSON.parse(storedUser);
+      if (parsedUser && typeof parsedUser === "object") {
+        const users = readStoredUsers();
+        const matchedUser = Array.isArray(users)
+          ? users.find((user) => user.id === parsedUser.id)
+          : null;
+        if (matchedUser) {
+          const dept = matchedUser.dept || "원료기획팀";
+          const position = matchedUser.position ? ` ${matchedUser.position}` : "";
+          return `동국제강 ${dept} | ${matchedUser.name}${position}님`;
+        }
+
+        const dept = typeof parsedUser.dept === "string" && parsedUser.dept.trim()
+          ? parsedUser.dept.trim()
+          : "원료기획팀";
+        const name = typeof parsedUser.name === "string" ? parsedUser.name.trim() : "";
+        if (name) {
+          return `동국제강 ${dept} | ${name.endsWith("님") ? name : `${name}님`}`;
+        }
+      }
+    } catch {
+      // Legacy plain-string session values are handled by the fallback below.
+    }
+
+    return storedUser;
+  }
+
   function setDateAndUser() {
     const date = new Date();
     document.getElementById("currentDate").textContent = date.toLocaleDateString("ko-KR", {
@@ -333,8 +388,7 @@
       day: "numeric",
       weekday: "short"
     });
-    document.getElementById("userDisplay").textContent =
-      sessionStorage.getItem("loggedInUser") || "동국제강 원료기획팀 | 이동석 팀장님";
+    document.getElementById("userDisplay").textContent = getUserDisplayText();
   }
 
   function setBanner() {
@@ -956,6 +1010,21 @@
     }
     if (tabName === "gradeImport") {
       renderGradeImport();
+      return;
+    }
+    if (tabName === "notice") {
+      if (window.adminFeatures) {
+        window.adminFeatures.renderNotices();
+        window.adminFeatures.renderCalendar();
+      }
+      return;
+    }
+    if (tabName === "user") {
+      if (window.adminFeatures) {
+        window.adminFeatures.loadUsersFromStorage();
+        window.adminFeatures.renderUsers();
+      }
+      setDateAndUser();
     }
   }
 
@@ -966,6 +1035,10 @@
     document.querySelectorAll(".tab-content").forEach((section) => {
       section.classList.toggle("active", section.id === `tab-${tabName}`);
     });
+    const exportBtn = document.getElementById("exportBtn");
+    if (exportBtn) {
+      exportBtn.disabled = !document.querySelector(`#tab-${tabName} table[data-export]`);
+    }
     history.replaceState(null, "", `#${tabName}`);
     requestAnimationFrame(() => {
       requestAnimationFrame(refreshCharts);
@@ -1013,6 +1086,7 @@
   }
 
   function init() {
+    window.refreshLoggedInUserDisplay = setDateAndUser;
     setDateAndUser();
     setBanner();
     setupSortableTables();
