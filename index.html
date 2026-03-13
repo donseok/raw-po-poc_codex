@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>부재료 실적 모니터링 대시보드</title>
+  <script>
+    if (!sessionStorage.getItem("loggedInUser")) {
+      location.href = "login.html";
+    }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="header">
+      <div class="header-left">
+        <div class="logo">동국제강 <span>DK</span></div>
+        <div class="header-sub">
+          첨부된 엑셀/요청 슬라이드를 기준으로 구성한 부산운영팀 부재료 실적 모니터링 대시보드
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="header-chip" id="currentDate"></div>
+        <div class="header-chip" id="userDisplay">부산운영팀 | 이동석 팀장님</div>
+        <button class="btn btn-accent btn-sm" id="exportBtn">엑셀 내보내기</button>
+        <button class="btn btn-outline btn-sm" id="logoutBtn">로그아웃</button>
+      </div>
+    </header>
+
+    <nav class="tab-nav" aria-label="대시보드 섹션">
+      <button class="tab-btn active" data-tab="plan">수급계획</button>
+      <button class="tab-btn" data-tab="suppliers">거래처관리</button>
+      <button class="tab-btn" data-tab="purchases">구매실적</button>
+      <button class="tab-btn" data-tab="allocation">공장배분</button>
+      <button class="tab-btn" data-tab="gradeImport">등급/수입관리</button>
+    </nav>
+
+    <main class="content">
+      <section class="info-banner" id="dataBanner"></section>
+
+      <section class="tab-content active section-stack" id="tab-plan">
+        <div class="kpi-row" id="planKpis"></div>
+
+        <div class="grid-2">
+          <article class="card">
+            <div class="card-head">
+              <div>
+                <div class="card-title"><span class="icon"></span>월별 계획 대비 실적</div>
+                <p class="card-copy">요청서 1번 화면 기준으로 월별 계획과 실적, 누계 달성률을 함께 확인합니다.</p>
+              </div>
+              <div class="metric-pill" id="planLatestRate"></div>
+            </div>
+            <div class="chart-container"><canvas id="planChart"></canvas></div>
+          </article>
+
+          <article class="card">
+            <div class="card-head">
+              <div>
+                <div class="card-title"><span class="icon"></span>핵심 관찰 포인트</div>
+                <p class="card-copy">첨부 슬라이드에서 요구한 KPI를 빠르게 해석할 수 있도록 요약했습니다.</p>
+              </div>
+            </div>
+            <div class="list-grid" id="planHighlights"></div>
+          </article>
+        </div>
+
+        <article class="card">
+          <div class="table-toolbar">
+            <div class="card-title" style="margin: 0;"><span class="icon"></span>월별 누계 실적 상세</div>
+            <div class="hint">연간 목표, 월 실적, 누계 달성률은 `2024년 계획 및 실적 1번` 시트를 기준으로 계산</div>
+          </div>
+          <div class="table-wrap">
+            <table class="sortable-table" data-export="plan">
+              <thead>
+                <tr>
+                  <th>월</th>
+                  <th class="text-right">계획</th>
+                  <th class="text-right">실적</th>
+                  <th class="text-right">누계 계획</th>
+                  <th class="text-right">누계 실적</th>
+                  <th class="text-right">누계 달성률</th>
+                </tr>
+              </thead>
+              <tbody id="planTable"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section class="tab-content section-stack" id="tab-suppliers">
+        <div class="kpi-row" id="supplierKpis"></div>
+
+        <article class="card">
+          <div class="table-toolbar">
+            <div class="card-title" style="margin: 0;"><span class="icon"></span>거래처 성과 테이블</div>
+            <div class="toolbar-actions">
+              <input class="toolbar-input" id="supplierSearch" type="search" placeholder="거래처명 검색">
+              <select class="toolbar-select" id="supplierGradeFilter">
+                <option value="all">모든 주력 등급</option>
+              </select>
+              <button class="btn btn-outline btn-sm" id="supplierFilterReset" type="button">초기화</button>
+            </div>
+          </div>
+          <div class="table-toolbar" style="margin-top: -4px;">
+            <div class="hint">원본 파일에는 연락처/지역 정보가 없어, 납품량·금액·성과율 중심으로 재구성</div>
+            <div class="hint" id="supplierResultMeta">전체 4개 거래처</div>
+          </div>
+          <div class="table-wrap">
+            <table class="sortable-table" data-export="suppliers">
+              <thead>
+                <tr>
+                  <th>거래처</th>
+                  <th class="text-right">누계 입고량</th>
+                  <th class="text-right">누계 입고금액</th>
+                  <th class="text-right">평균 단가</th>
+                  <th class="text-right">점유율</th>
+                  <th>주력 등급</th>
+                  <th>신뢰등급</th>
+                  <th class="text-right">납품 성과율</th>
+                </tr>
+              </thead>
+              <tbody id="supplierTable"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <div class="grid-2">
+          <article class="card">
+            <div class="card-title"><span class="icon"></span>거래처별 납품 비중</div>
+            <div class="chart-container chart-doughnut"><canvas id="supplierShareChart"></canvas></div>
+          </article>
+          <article class="card">
+            <div class="card-title"><span class="icon"></span>월별 주요 거래처 납품 추이</div>
+            <div class="chart-container"><canvas id="supplierTrendChart"></canvas></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="tab-content section-stack" id="tab-purchases">
+        <div class="kpi-row" id="purchaseKpis"></div>
+
+        <div class="grid-2">
+          <article class="card">
+            <div class="card-title"><span class="icon"></span>월별 구매량 및 금액 추이</div>
+            <div class="chart-container"><canvas id="purchaseTrendChart"></canvas></div>
+          </article>
+          <article class="card">
+            <div class="card-title"><span class="icon"></span>월별 요약 인사이트</div>
+            <div class="list-grid" id="purchaseHighlights"></div>
+          </article>
+        </div>
+
+        <article class="card">
+          <div class="table-toolbar">
+            <div class="card-title" style="margin: 0;"><span class="icon"></span>월별 구매실적 상세</div>
+            <div class="hint">`인천공장 실적(2024년)` 시트의 입고량/입고금액 raw data 합계</div>
+          </div>
+          <div class="table-wrap">
+            <table class="sortable-table" data-export="purchases">
+              <thead>
+                <tr>
+                  <th>월</th>
+                  <th class="text-right">입고량</th>
+                  <th class="text-right">입고금액</th>
+                  <th class="text-right">평균 단가</th>
+                  <th class="text-right">거래처 수</th>
+                </tr>
+              </thead>
+              <tbody id="purchaseTable"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section class="tab-content section-stack" id="tab-allocation">
+        <div class="kpi-row" id="allocationKpis"></div>
+
+        <div class="grid-2">
+          <article class="card">
+            <div class="card-head">
+              <div>
+                <div class="card-title"><span class="icon"></span>인천공장 배분 현황</div>
+                <p class="card-copy">계획 대비 실적은 sheet3, 등급 구성은 연간 계획량 기준으로 표시합니다.</p>
+              </div>
+              <div class="metric-pill" id="incheonRatePill"></div>
+            </div>
+            <div style="margin-bottom: 12px;">
+              <div class="progress-bar"><div class="progress-fill blue" id="incheonProgress"></div></div>
+            </div>
+            <div class="chart-container chart-sm chart-doughnut"><canvas id="incheonAllocationChart"></canvas></div>
+          </article>
+
+          <article class="card">
+            <div class="card-head">
+              <div>
+                <div class="card-title"><span class="icon"></span>포항공장 배분 현황</div>
+                <p class="card-copy">슬라이드의 공장배분 탭 요구에 맞춰 동일한 구조로 비교합니다.</p>
+              </div>
+              <div class="metric-pill" id="pohangRatePill"></div>
+            </div>
+            <div style="margin-bottom: 12px;">
+              <div class="progress-bar"><div class="progress-fill orange" id="pohangProgress"></div></div>
+            </div>
+            <div class="chart-container chart-sm chart-doughnut"><canvas id="pohangAllocationChart"></canvas></div>
+          </article>
+        </div>
+
+        <article class="card">
+          <div class="table-toolbar">
+            <div class="card-title" style="margin: 0;"><span class="icon"></span>공장별 월간 배분 성과</div>
+            <div class="hint">인천/포항 계획·실적·달성률을 월 단위로 정리</div>
+          </div>
+          <div class="table-wrap">
+            <table class="sortable-table" data-export="allocation">
+              <thead>
+                <tr>
+                  <th>월</th>
+                  <th class="text-right">인천 계획</th>
+                  <th class="text-right">인천 실적</th>
+                  <th class="text-right">인천 달성률</th>
+                  <th class="text-right">포항 계획</th>
+                  <th class="text-right">포항 실적</th>
+                  <th class="text-right">포항 달성률</th>
+                </tr>
+              </thead>
+              <tbody id="allocationTable"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section class="tab-content section-stack" id="tab-gradeImport">
+        <div class="kpi-row" id="gradeImportKpis"></div>
+
+        <div class="grid-2">
+          <article class="card">
+            <div class="card-title"><span class="icon"></span>등급 비중 비교</div>
+            <div class="chart-container"><canvas id="gradeMixChart"></canvas></div>
+          </article>
+          <article class="card">
+            <div class="card-title"><span class="icon"></span>국고하 + 선반설 비율 추이</div>
+            <div class="chart-container"><canvas id="gradeRatioChart"></canvas></div>
+          </article>
+        </div>
+
+        <article class="card">
+          <div class="table-toolbar">
+            <div class="card-title" style="margin: 0;"><span class="icon"></span>2024 / 2023 등급별 비교</div>
+            <div class="hint">원본 raw data에서 정의 탭을 적용해 거시 등급으로 재분류</div>
+          </div>
+          <div class="table-wrap">
+            <table class="sortable-table" data-export="gradeImport">
+              <thead>
+                <tr>
+                  <th>등급</th>
+                  <th class="text-right">2024 입고량</th>
+                  <th class="text-right">2024 비중</th>
+                  <th class="text-right">2023 입고량</th>
+                  <th class="text-right">2023 비중</th>
+                  <th class="text-right">증감(%p)</th>
+                </tr>
+              </thead>
+              <tbody id="gradeImportTable"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <p class="footer-note" id="footerNote"></p>
+    </main>
+  </div>
+
+  <script src="js/dashboard-data.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
