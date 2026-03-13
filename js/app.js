@@ -334,14 +334,15 @@
       weekday: "short"
     });
     document.getElementById("userDisplay").textContent =
-      sessionStorage.getItem("loggedInUser") || "부산운영팀 | 이동석 팀장님";
+      sessionStorage.getItem("loggedInUser") || "동국제강 원료기획팀 | 이동석 팀장님";
   }
 
   function setBanner() {
     const generatedAt = new Date(data.meta.generatedAt);
     document.getElementById("dataBanner").innerHTML = `
       <strong>분석 기준</strong><br>
-      원본 파일: ${data.meta.sourceFile}<br>
+      대상 조직: 동국제강 원료기획팀<br>
+      원본 파일: 첨부 엑셀 및 요청 슬라이드 기준<br>
       생성 시각: ${generatedAt.toLocaleString("ko-KR")}<br>
       ${data.meta.displayNote}
     `;
