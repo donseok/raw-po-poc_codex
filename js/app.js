@@ -2864,8 +2864,8 @@
         ""
       ),
       kpiCard(
-        "국고하 + 선반설 비율",
-        `${formatPercent(gradeData.lowTurningRatio, 2)}<small></small>`,
+        "누계 입고금액",
+        `${formatCompact(purchasesData?.totalAmount || 0)}<small>원</small>`,
         `${gradeData.currentYear} raw data 기준`,
         "accent"
       ),
