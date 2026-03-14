@@ -172,7 +172,6 @@
   const tabLabels = {
     plan: "부재료실적 모니터링",
     purchases: "구매실적",
-    allocation: "공장배분",
     gradeImport: "등급/수입관리",
     notice: "공지사항",
     user: "사용자관리"
@@ -1840,7 +1839,7 @@
   function setBanner() {
     const generatedAt = new Date(data.meta.generatedAt);
     const selectedYearData = getSelectedYearData();
-    const availableSections = ["plan", "suppliers", "purchases", "allocation", "gradeImport"].filter(
+    const availableSections = ["plan", "suppliers", "purchases", "gradeImport"].filter(
       (key) => selectedYearData?.[key]
     );
     document.getElementById("dataBanner").innerHTML = `
@@ -2506,10 +2505,6 @@
       renderPurchases();
       return;
     }
-    if (tabName === "allocation") {
-      renderAllocation();
-      return;
-    }
     if (tabName === "gradeImport") {
       renderGradeImport();
       return;
@@ -2826,7 +2821,7 @@
 
     try {
       const currentActiveTab = document.querySelector(".tab-btn.active")?.dataset.tab || "plan";
-      const dataTabs = ["plan", "purchases", "allocation", "gradeImport"];
+      const dataTabs = ["plan", "purchases", "gradeImport"];
 
       for (const tab of dataTabs) {
         const section = document.getElementById(`tab-${tab}`);
@@ -2893,8 +2888,7 @@
       const sectionDefs = [
         { title: "1. 부재료실적 모니터링", builder: buildDocxPlanSection },
         { title: "2. 구매실적", builder: buildDocxPurchasesSection },
-        { title: "3. 공장배분", builder: buildDocxAllocationSection },
-        { title: "4. 등급/수입관리", builder: buildDocxGradeImportSection }
+        { title: "3. 등급/수입관리", builder: buildDocxGradeImportSection }
       ];
 
       const sections = [coverSection];
