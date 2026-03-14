@@ -168,6 +168,14 @@
     });
   }
 
+  function getCssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  function getSurfaceColor() {
+    return getCssVar("--surface") || "#ffffff";
+  }
+
   const DEFAULT_GRADE_MAPPINGS = {
     국고상: ["생철A", "생철B", "생철AL", "슈레더B"],
     국고중: ["중량A", "중량AS", "중AL", "중량 ALC(가위)", "중량BS", "모터블럭"],
@@ -206,9 +214,10 @@
       }
 
       const { ctx } = chart;
+      const themeText = getCssVar("--text") || "#616161";
       ctx.save();
       ctx.font = "11px Segoe UI";
-      ctx.fillStyle = pluginOptions.color || "#616161";
+      ctx.fillStyle = pluginOptions.color || themeText;
       ctx.textAlign = "center";
       ctx.textBaseline = "bottom";
 
@@ -232,7 +241,7 @@
               pluginOptions.format === "percent"
                 ? `${Number(value).toFixed(1)}%`
                 : formatCompact(value);
-            ctx.fillStyle = "#37474f";
+            ctx.fillStyle = themeText;
             ctx.fillText(label, x, y);
           });
           return;
@@ -248,7 +257,7 @@
               pluginOptions.format === "percent"
                 ? `${Number(value).toFixed(1)}%`
                 : formatCompact(value);
-            ctx.fillStyle = dataset.borderColor || pluginOptions.color || "#37474f";
+            ctx.fillStyle = dataset.borderColor || pluginOptions.color || themeText;
             ctx.fillText(label, bar.x, bar.y - 6);
           });
         }
@@ -2506,7 +2515,7 @@
             backgroundColor: `${palette[index]}22`,
             pointRadius: 4,
             pointHoverRadius: 5,
-            pointBackgroundColor: "#ffffff",
+            pointBackgroundColor: getSurfaceColor(),
             pointBorderColor: palette[index],
             pointBorderWidth: 2,
             borderWidth: 3,
@@ -2796,7 +2805,7 @@
             {
               data: gradeMix.map((item) => item.share),
               backgroundColor: palette,
-              borderColor: "#ffffff",
+              borderColor: getSurfaceColor(),
               borderWidth: 3
             }
           ]
@@ -2909,7 +2918,7 @@
             {
               data: incheonAllocation.gradeMix.map((item) => item.share),
               backgroundColor: getGradePalette(incheonAllocation.gradeMix),
-              borderColor: "#ffffff",
+              borderColor: getSurfaceColor(),
               borderWidth: 3
             }
           ]
@@ -4317,6 +4326,13 @@
     const initialTab = tabLabels[requestedTab] ? requestedTab : "plan";
     setActiveTab(initialTab);
     renderActiveTab(initialTab);
+
+    document.addEventListener("themeChanged", function() {
+      var tab = document.querySelector(".tab-content.active");
+      if (tab) {
+        renderActiveTab(tab.id.replace("tab-", ""));
+      }
+    });
   }
 
   if (window.appStorage) {

@@ -923,6 +923,11 @@
         setTimeout(function() {
           document.body.classList.remove("theme-transitioning");
         }, 350);
+        // Re-render active tab so charts pick up new theme colors
+        var activeTab = document.querySelector(".tab-content.active");
+        if (activeTab) {
+          document.dispatchEvent(new CustomEvent("themeChanged"));
+        }
       });
     })();
   </script>

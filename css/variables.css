@@ -23,6 +23,7 @@
   --text-light: #757575;
   --bg: #f0f2f5;
   --white: #ffffff;
+  --surface: #ffffff;
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.12);
   --radius: 12px;
@@ -52,7 +53,8 @@
   --text: #e8e8f0;
   --text-light: #a0a0bb;
   --bg: #121225;
-  --white: #1e1e33;
+  --white: #ffffff;
+  --surface: #1e1e33;
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.45);
 }

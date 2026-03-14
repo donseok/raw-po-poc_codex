@@ -163,7 +163,7 @@ a {
 }
 
 .tab-nav {
-  background: var(--white);
+  background: var(--surface);
   border-bottom: 2px solid var(--gray-200);
   display: flex;
   gap: 4px;

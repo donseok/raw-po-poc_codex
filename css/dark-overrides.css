@@ -289,6 +289,41 @@
   border-color: #3949ab;
 }
 
+/* ── Additional dark overrides for hardcoded light backgrounds ── */
+
+[data-theme="dark"] .plan-paste-cell:focus,
+[data-theme="dark"] .raw-paste-grid-input:focus {
+  background: #2a2a50;
+}
+
+[data-theme="dark"] .badge-orange {
+  background: rgba(255, 183, 77, 0.15);
+}
+
+[data-theme="dark"] .plan-paste-grid td {
+  background: var(--surface);
+}
+
+[data-theme="dark"] .chatbot-msg.bot {
+  background: #252540;
+  color: #e8e8f0;
+}
+
+[data-theme="dark"] .chatbot-input-row {
+  border-top-color: #33334d;
+}
+
+[data-theme="dark"] .chatbot-chip {
+  border-color: #44446b;
+  background: #252540;
+  color: #7986cb;
+}
+
+[data-theme="dark"] .chatbot-chip:hover {
+  background: #2a2a50;
+  border-color: #5c6bc0;
+}
+
 /* ── Theme toggle button ── */
 
 .theme-toggle {
@@ -297,7 +332,7 @@
   border: none;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.14);
-  color: var(--white);
+  color: #ffffff;
   cursor: pointer;
   display: flex;
   align-items: center;

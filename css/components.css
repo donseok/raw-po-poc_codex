@@ -5,7 +5,7 @@
 }
 
 .kpi-card {
-  background: var(--white);
+  background: var(--surface);
   border-radius: var(--radius);
   padding: 20px;
   box-shadow: var(--shadow);
@@ -88,7 +88,7 @@
 }
 
 .card {
-  background: var(--white);
+  background: var(--surface);
   border-radius: var(--radius);
   padding: 24px;
   box-shadow: var(--shadow);
@@ -199,7 +199,7 @@
 }
 
 .btn-outline {
-  background: var(--white);
+  background: var(--surface);
   border: 1.5px solid var(--gray-300);
   color: var(--text);
 }
@@ -280,7 +280,7 @@ tr:hover {
   min-height: 34px;
   border: 1.5px solid var(--gray-300);
   border-radius: 8px;
-  background: var(--white);
+  background: var(--surface);
   color: var(--text);
   padding: 6px 10px;
   font-size: 12px;
@@ -600,7 +600,7 @@ tr:hover {
 .plan-paste-wrap {
   margin-top: 6px;
   border: 1px solid rgba(26, 35, 126, 0.12);
-  background: var(--white);
+  background: var(--surface);
 }
 
 .plan-paste-grid {
@@ -647,7 +647,7 @@ tr:hover {
 }
 
 .plan-paste-grid td {
-  background: var(--white);
+  background: var(--surface);
   padding: 0;
 }
 
@@ -733,7 +733,7 @@ tr:hover {
   border: 1.5px solid var(--gray-300);
   border-radius: 8px;
   font-size: 13px;
-  background: var(--white);
+  background: var(--surface);
   color: var(--text);
   font-family: inherit;
   transition: border-color 0.2s, box-shadow 0.2s;
@@ -780,7 +780,7 @@ tr:hover {
 }
 
 .modal {
-  background: var(--white);
+  background: var(--surface);
   border-radius: 16px;
   padding: 28px;
   max-width: 700px;
@@ -1015,7 +1015,7 @@ tr:hover {
   min-width: 36px;
   height: 36px;
   border: 1px solid var(--gray-200);
-  background: var(--white);
+  background: var(--surface);
   color: var(--text);
   border-radius: 8px;
   cursor: pointer;
@@ -1217,7 +1217,7 @@ tr:hover {
 
 .raw-paste-grid tbody td {
   padding: 0;
-  background: var(--white);
+  background: var(--surface);
   border-right: 1px solid var(--gray-200);
 }
 
@@ -1272,7 +1272,7 @@ tr:hover {
   gap: 8px;
   padding: 8px 12px;
   border-radius: 999px;
-  background: var(--white);
+  background: var(--surface);
   border: 1px solid var(--gray-200);
   font-size: 12px;
   color: var(--text);
@@ -1405,7 +1405,7 @@ tr:hover {
   z-index: 190;
   width: 380px;
   max-height: 520px;
-  background: var(--white);
+  background: var(--surface);
   border-radius: 16px;
   box-shadow: var(--shadow-lg);
   flex-direction: column;
@@ -1504,7 +1504,7 @@ tr:hover {
   border: 1.5px solid var(--gray-300);
   border-radius: 8px;
   font-size: 13px;
-  background: var(--white);
+  background: var(--surface);
   color: var(--text);
   font-family: inherit;
   transition: border-color 0.2s, box-shadow 0.2s;
@@ -1527,7 +1527,7 @@ tr:hover {
   padding: 5px 12px;
   border: 1px solid var(--gray-300);
   border-radius: 999px;
-  background: var(--white);
+  background: var(--surface);
   color: var(--primary);
   font-size: 12px;
   cursor: pointer;
