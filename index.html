@@ -42,7 +42,6 @@
 
     <nav class="tab-nav" aria-label="대시보드 섹션">
       <button class="tab-btn active" data-tab="plan">부재료실적 모니터링</button>
-      <button class="tab-btn" data-tab="purchases">구매실적</button>
       <button class="tab-btn" data-tab="gradeImport">등급별현황/수입관리</button>
       <button class="tab-btn" data-tab="notice">공지사항</button>
       <button class="tab-btn" data-tab="user">사용자관리</button>
@@ -346,42 +345,6 @@
         </article>
       </section>
 
-      <section class="tab-content section-stack" id="tab-purchases">
-        <div class="kpi-row" id="purchaseKpis"></div>
-
-        <div class="grid-2">
-          <article class="card">
-            <div class="card-title"><span class="icon"></span>월별 구매량 및 금액 추이</div>
-            <div class="chart-container"><canvas id="purchaseTrendChart"></canvas></div>
-          </article>
-          <article class="card">
-            <div class="card-title"><span class="icon"></span>월별 요약 인사이트</div>
-            <div class="list-grid" id="purchaseHighlights"></div>
-          </article>
-        </div>
-
-        <article class="card">
-          <div class="table-toolbar">
-            <div class="card-title" style="margin: 0;"><span class="icon"></span>월별 구매실적 상세</div>
-            <div class="hint" id="purchaseDetailHint"></div>
-          </div>
-          <div class="table-wrap">
-            <table class="sortable-table" data-export="purchases">
-              <thead>
-                <tr>
-                  <th>월</th>
-                  <th class="text-right">입고량</th>
-                  <th class="text-right">입고금액</th>
-                  <th class="text-right">평균 단가</th>
-                  <th class="text-right">거래처 수</th>
-                </tr>
-              </thead>
-              <tbody id="purchaseTable"></tbody>
-            </table>
-          </div>
-        </article>
-      </section>
-
       <section class="tab-content section-stack" id="tab-allocation">
         <div class="kpi-row" id="allocationKpis"></div>
 
@@ -444,7 +407,7 @@
 
         <div class="grid-2">
           <article class="card">
-            <div class="card-title"><span class="icon"></span>등급 비중 비교</div>
+            <div class="card-title"><span class="icon"></span>월별 구매량 추이</div>
             <div class="chart-container"><canvas id="gradeMixChart"></canvas></div>
           </article>
           <article class="card">
@@ -454,23 +417,53 @@
         </div>
 
         <article class="card">
+          <div class="card-title"><span class="icon"></span>월별 요약 인사이트</div>
+          <div class="list-grid" id="purchaseHighlights"></div>
+        </article>
+
+        <article class="card">
           <div class="table-toolbar">
-            <div class="card-title" style="margin: 0;"><span class="icon"></span><span id="gradeImportTitle">등급별 비교</span></div>
-            <div class="hint" id="gradeImportHint">원본 raw data에서 정의 탭을 적용해 거시 등급으로 재분류</div>
+            <div class="card-title" style="margin: 0;"><span class="icon"></span>월별 구매실적 상세</div>
+            <div class="hint" id="purchaseDetailHint"></div>
           </div>
           <div class="table-wrap">
-            <table class="sortable-table" data-export="gradeImport">
+            <table class="sortable-table" data-export="purchases">
               <thead>
                 <tr>
-                  <th>등급</th>
-                  <th class="text-right" id="gradeImportCurrentQtyHeader"></th>
-                  <th class="text-right" id="gradeImportCurrentShareHeader"></th>
-                  <th class="text-right" id="gradeImportCompareQtyHeader"></th>
-                  <th class="text-right" id="gradeImportCompareShareHeader"></th>
-                  <th class="text-right">증감(%p)</th>
+                  <th>월</th>
+                  <th class="text-right">입고량</th>
+                  <th class="text-right">입고금액</th>
+                  <th class="text-right">평균 단가</th>
+                  <th class="text-right">거래처 수</th>
                 </tr>
               </thead>
-              <tbody id="gradeImportTable"></tbody>
+              <tbody id="purchaseTable"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="table-toolbar">
+            <div class="card-title" style="margin: 0;"><span class="icon"></span>수입 계약/운송 현황</div>
+            <div class="hint">선적부터 도착까지의 진행 상태를 한 화면에서 확인합니다.</div>
+          </div>
+          <div class="table-wrap">
+            <table class="sortable-table" data-export="gradeImportImportTable">
+              <thead>
+                <tr>
+                  <th>계약번호</th>
+                  <th>수출국</th>
+                  <th>공급사</th>
+                  <th>등급</th>
+                  <th class="text-right">수량(톤)</th>
+                  <th class="text-right">CFR($/톤)</th>
+                  <th class="text-right">환율</th>
+                  <th>선적일</th>
+                  <th>도착예정일</th>
+                  <th class="text-center no-sort">상태</th>
+                </tr>
+              </thead>
+              <tbody id="importShipmentTable"></tbody>
             </table>
           </div>
         </article>
@@ -827,6 +820,25 @@
       <div style="margin-top: 16px; text-align: right;">
         <button class="btn btn-outline btn-sm" type="button" onclick="hideModal('scheduleDetailModal')">닫기</button>
       </div>
+    </div>
+  </div>
+
+  <button class="chatbot-fab" id="chatbotFab" type="button" title="챗봇 열기">
+    <span class="chatbot-fab-icon" id="chatbotFabIcon">💬</span>
+  </button>
+
+  <div class="chatbot-popup" id="chatbotPopup">
+    <div class="chatbot-popup-header">
+      <span class="chatbot-popup-title">챗봇</span>
+      <div class="chatbot-popup-actions">
+        <button class="chatbot-header-btn" id="chatbotResetBtn" type="button" title="대화 초기화">↺</button>
+        <button class="chatbot-header-btn" id="chatbotCloseBtn" type="button" title="닫기">✕</button>
+      </div>
+    </div>
+    <div class="chatbot-messages" id="chatbotMessages"></div>
+    <div class="chatbot-input-row">
+      <input id="chatbotInput" placeholder="예: 7월 계획과 실적은?" autocomplete="off">
+      <button class="btn btn-primary btn-sm" id="chatbotSendBtn" type="button">전송</button>
     </div>
   </div>
 

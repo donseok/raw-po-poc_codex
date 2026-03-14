@@ -171,7 +171,6 @@
 
   const tabLabels = {
     plan: "부재료실적 모니터링",
-    purchases: "구매실적",
     gradeImport: "등급별현황/수입관리",
     notice: "공지사항",
     user: "사용자관리"
@@ -919,6 +918,36 @@
       performanceRates.reduce((sum, value) => sum + value, 0) / performanceRates.length,
       1
     );
+  }
+
+  function getImportShipmentStatusBadge(status) {
+    if (status === "도착") {
+      return "badge badge-green";
+    }
+    if (status === "운송중") {
+      return "badge badge-blue";
+    }
+    if (status === "선적") {
+      return "badge badge-orange";
+    }
+    return "badge badge-gray";
+  }
+
+  function getImportShipmentRows(year) {
+    const selectedYear = Number(year) || 2024;
+    return [
+      { seq: "001", country: "일본", supplier: "Toyota Tsusho", grade: "HMS1", qty: 15000, cfr: 368, fx: 1382, shipDate: `${selectedYear}-01-15`, eta: `${selectedYear}-02-02`, status: "도착" },
+      { seq: "002", country: "일본", supplier: "Hanwa Co.", grade: "Shredded", qty: 12000, cfr: 375, fx: 1385, shipDate: `${selectedYear}-01-28`, eta: `${selectedYear}-02-15`, status: "도착" },
+      { seq: "003", country: "러시아", supplier: "NLMK Trading", grade: "HMS2", qty: 20000, cfr: 358, fx: 1380, shipDate: `${selectedYear}-02-05`, eta: `${selectedYear}-03-01`, status: "도착" },
+      { seq: "004", country: "일본", supplier: "Mitsui & Co.", grade: "HMS1", qty: 18000, cfr: 372, fx: 1388, shipDate: `${selectedYear}-02-20`, eta: `${selectedYear}-03-08`, status: "운송중" },
+      { seq: "005", country: "러시아", supplier: "Metalloinvest", grade: "HMS2", qty: 22000, cfr: 355, fx: 1383, shipDate: `${selectedYear}-03-01`, eta: `${selectedYear}-03-25`, status: "운송중" },
+      { seq: "006", country: "일본", supplier: "Toyota Tsusho", grade: "Shredded", qty: 14000, cfr: 380, fx: 1390, shipDate: `${selectedYear}-03-10`, eta: `${selectedYear}-03-28`, status: "선적" },
+      { seq: "007", country: "러시아", supplier: "Severstal Export", grade: "HMS1", qty: 16000, cfr: 362, fx: 1385, shipDate: `${selectedYear}-03-20`, eta: `${selectedYear}-04-12`, status: "계약" },
+      { seq: "008", country: "일본", supplier: "Hanwa Co.", grade: "HMS1", qty: 10400, cfr: 378, fx: 1387, shipDate: `${selectedYear}-04-01`, eta: `${selectedYear}-04-18`, status: "계약" }
+    ].map((row) => ({
+      ...row,
+      contractNo: `IMP-${selectedYear}-${row.seq}`
+    }));
   }
 
   function normalizeClipboardCell(value) {
@@ -1839,7 +1868,7 @@
   function setBanner() {
     const generatedAt = new Date(data.meta.generatedAt);
     const selectedYearData = getSelectedYearData();
-    const availableSections = ["plan", "suppliers", "purchases", "gradeImport"].filter(
+    const availableSections = ["plan", "suppliers", "gradeImport"].filter(
       (key) => selectedYearData?.[key]
     );
     document.getElementById("dataBanner").innerHTML = `
@@ -2349,6 +2378,46 @@
 
   function renderGradeImport() {
     const gradeData = getGradeImportData();
+    const purchasesData = getPurchasesData();
+    const importShipmentRows = getImportShipmentRows(getSelectedYear());
+    const purchaseDetailHint = document.getElementById("purchaseDetailHint");
+    if (purchaseDetailHint) {
+      purchaseDetailHint.textContent = `${getSelectedYearLabel()} 월별 입고량/입고금액 raw data 합계입니다.`;
+    }
+
+    if (!purchasesData?.monthly?.length) {
+      document.getElementById("purchaseHighlights").innerHTML = `<div class="empty-state">${getSelectedYearLabel()} 구매실적 데이터가 없습니다.</div>`;
+      document.getElementById("purchaseTable").innerHTML = makeUnavailableRow(5, `${getSelectedYearLabel()} 구매실적 데이터가 없습니다.`);
+    } else {
+      const monthly = purchasesData.monthly;
+      const peakMonth = [...monthly].sort((left, right) => right.qty - left.qty)[0];
+      const lowMonth = [...monthly].sort((left, right) => left.qty - right.qty)[0];
+      const highestPrice = [...monthly].sort((left, right) => right.avgUnitPrice - left.avgUnitPrice)[0];
+      const lowestPrice = [...monthly].sort((left, right) => left.avgUnitPrice - right.avgUnitPrice)[0];
+
+      document.getElementById("purchaseHighlights").innerHTML = [
+        miniStat("최대 구매량 월", `${peakMonth.month} raw data 합계`, formatCompact(peakMonth.qty)),
+        miniStat("최소 구매량 월", `${lowMonth.month} raw data 합계`, formatCompact(lowMonth.qty)),
+        miniStat("최고 평균 단가", `${highestPrice.month} 월 평균 단가`, formatNumber(highestPrice.avgUnitPrice, 1)),
+        miniStat("최저 평균 단가", `${lowestPrice.month} 월 평균 단가`, formatNumber(lowestPrice.avgUnitPrice, 1))
+      ].join("");
+
+      document.getElementById("purchaseTable").innerHTML = monthly
+        .map(
+          (row) => `
+            <tr>
+              <td>${row.month}</td>
+              <td class="text-right">${formatNumber(row.qty)}</td>
+              <td class="text-right">${formatNumber(row.amount)}</td>
+              <td class="text-right">${formatNumber(row.avgUnitPrice, 1)}</td>
+              <td class="text-right">${formatNumber(row.supplierCount)}</td>
+            </tr>
+          `
+        )
+        .join("");
+      applyTableSort(document.querySelector('table[data-export="purchases"]'));
+    }
+
     if (!gradeData?.comparisonTable?.length) {
       document.getElementById("gradeImportKpis").innerHTML = kpiCard(
         "연도 상태",
@@ -2356,21 +2425,89 @@
         "등급/수입 비교 데이터가 없습니다.",
         ""
       );
-      document.getElementById("gradeImportTable").innerHTML = makeUnavailableRow(6, `${getSelectedYearLabel()} 등급/수입 비교 데이터가 없습니다.`);
-      setEmptyChartMessage("gradeMixChart", `${getSelectedYearLabel()} 등급 비중 비교 데이터가 없습니다.`);
+      document.getElementById("importShipmentTable").innerHTML = importShipmentRows
+        .map(
+          (row) => `
+            <tr>
+              <td>${row.contractNo}</td>
+              <td>${row.country}</td>
+              <td>${row.supplier}</td>
+              <td>${row.grade}</td>
+              <td class="text-right">${formatNumber(row.qty)}</td>
+              <td class="text-right">$${formatNumber(row.cfr)}</td>
+              <td class="text-right">${formatNumber(row.fx)}</td>
+              <td>${row.shipDate}</td>
+              <td>${row.eta}</td>
+              <td class="text-center"><span class="${getImportShipmentStatusBadge(row.status)}">${row.status}</span></td>
+            </tr>
+          `
+        )
+        .join("");
+      applyTableSort(document.querySelector('table[data-export="gradeImportImportTable"]'));
+      if (!purchasesData?.monthly?.length) {
+        setEmptyChartMessage("gradeMixChart", `${getSelectedYearLabel()} 구매 추이 데이터가 없습니다.`);
+      } else {
+        clearEmptyChartMessage("gradeMixChart");
+        makeBarChart("gradeMixChart", "gradeMixChart", {
+          type: "bar",
+          data: {
+            labels: purchasesData.monthly.map((row) => row.month),
+            datasets: [
+              {
+                type: "bar",
+                label: "구매량(톤)",
+                data: purchasesData.monthly.map((row) => row.qty),
+                backgroundColor: "rgba(94, 103, 176, 0.9)",
+                borderRadius: 8,
+                yAxisID: "y"
+              },
+              {
+                type: "line",
+                label: "금액(억원)",
+                data: purchasesData.monthly.map((row) => Number((row.amount / 100000000).toFixed(1))),
+                borderColor: colors.accent,
+                backgroundColor: colors.accent,
+                pointRadius: 5,
+                pointHoverRadius: 5,
+                tension: 0.25,
+                yAxisID: "y1"
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: "top" }
+            },
+            scales: {
+              y: {
+                position: "left",
+                ticks: {
+                  callback: (value) => formatNumber(value)
+                }
+              },
+              y1: {
+                position: "right",
+                grid: { drawOnChartArea: false },
+                ticks: {
+                  callback: (value) => value
+                }
+              }
+            }
+          }
+        });
+      }
       setEmptyChartMessage("gradeRatioChart", `${getSelectedYearLabel()} 집중 등급 비율 데이터가 없습니다.`);
       return;
     }
 
-    clearEmptyChartMessage("gradeMixChart");
+    if (!purchasesData?.monthly?.length) {
+      setEmptyChartMessage("gradeMixChart", `${getSelectedYearLabel()} 구매 추이 데이터가 없습니다.`);
+    } else {
+      clearEmptyChartMessage("gradeMixChart");
+    }
     clearEmptyChartMessage("gradeRatioChart");
-    document.getElementById("gradeImportTitle").textContent = `${gradeData.currentYear} / ${gradeData.compareYear} 등급별 비교`;
-    document.getElementById("gradeImportHint").textContent =
-      `${gradeData.currentYear}년을 기준으로 ${gradeData.compareYear}년과 비교한 거시 등급 데이터입니다.`;
-    document.getElementById("gradeImportCurrentQtyHeader").textContent = `${gradeData.currentYear} 입고량`;
-    document.getElementById("gradeImportCurrentShareHeader").textContent = `${gradeData.currentYear} 비중`;
-    document.getElementById("gradeImportCompareQtyHeader").textContent = `${gradeData.compareYear} 입고량`;
-    document.getElementById("gradeImportCompareShareHeader").textContent = `${gradeData.compareYear} 비중`;
 
     const primaryCategory = [...gradeData.mix].sort((left, right) => right.qty - left.qty)[0];
     const deltaClass = gradeData.deltaShare >= 0 ? "up" : "down";
@@ -2404,57 +2541,77 @@
       )
     ].join("");
 
-    document.getElementById("gradeImportTable").innerHTML = gradeData.comparisonTable
+    document.getElementById("importShipmentTable").innerHTML = importShipmentRows
       .map(
         (row) => `
           <tr>
-            <td>${row.category}</td>
-            <td class="text-right">${formatNumber(row.currentQty)}</td>
-            <td class="text-right">${formatPercent(row.currentShare, 2)}</td>
-            <td class="text-right">${formatNumber(row.compareQty)}</td>
-            <td class="text-right">${formatPercent(row.compareShare, 2)}</td>
-            <td class="text-right">${formatPercent(row.diffShare, 2)}</td>
+            <td>${row.contractNo}</td>
+            <td>${row.country}</td>
+            <td>${row.supplier}</td>
+            <td>${row.grade}</td>
+            <td class="text-right">${formatNumber(row.qty)}</td>
+            <td class="text-right">$${formatNumber(row.cfr)}</td>
+            <td class="text-right">${formatNumber(row.fx)}</td>
+            <td>${row.shipDate}</td>
+            <td>${row.eta}</td>
+            <td class="text-center"><span class="${getImportShipmentStatusBadge(row.status)}">${row.status}</span></td>
           </tr>
         `
       )
       .join("");
-    applyTableSort(document.querySelector('table[data-export="gradeImport"]'));
+    applyTableSort(document.querySelector('table[data-export="gradeImportImportTable"]'));
 
-    makeBarChart("gradeMixChart", "gradeMixChart", {
-      type: "bar",
-      data: {
-        labels: gradeData.comparisonTable.map((row) => row.category),
-        datasets: [
-          {
-            label: `${gradeData.currentYear} 비중`,
-            data: gradeData.comparisonTable.map((row) => row.currentShare),
-            backgroundColor: "rgba(26, 35, 126, 0.72)",
-            borderRadius: 8
-          },
-          {
-            label: `${gradeData.compareYear} 비중`,
-            data: gradeData.comparisonTable.map((row) => row.compareShare),
-            backgroundColor: "rgba(255, 143, 0, 0.72)",
-            borderRadius: 8
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { position: "top" },
-          valueLabelPlugin: { enabled: true, format: "percent" }
+    if (purchasesData?.monthly?.length) {
+      makeBarChart("gradeMixChart", "gradeMixChart", {
+        type: "bar",
+        data: {
+          labels: purchasesData.monthly.map((row) => row.month),
+          datasets: [
+            {
+              type: "bar",
+              label: "구매량(톤)",
+              data: purchasesData.monthly.map((row) => row.qty),
+              backgroundColor: "rgba(94, 103, 176, 0.9)",
+              borderRadius: 8,
+              yAxisID: "y"
+            },
+            {
+              type: "line",
+              label: "금액(억원)",
+              data: purchasesData.monthly.map((row) => Number((row.amount / 100000000).toFixed(1))),
+              borderColor: colors.accent,
+              backgroundColor: colors.accent,
+              pointRadius: 5,
+              pointHoverRadius: 5,
+              tension: 0.25,
+              yAxisID: "y1"
+            }
+          ]
         },
-        scales: {
-          y: {
-            ticks: {
-              callback: (value) => `${value}%`
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: "top" }
+          },
+          scales: {
+            y: {
+              position: "left",
+              ticks: {
+                callback: (value) => formatNumber(value)
+              }
+            },
+            y1: {
+              position: "right",
+              grid: { drawOnChartArea: false },
+              ticks: {
+                callback: (value) => value
+              }
             }
           }
         }
-      }
-    });
+      });
+    }
 
     makeBarChart("gradeRatioChart", "gradeRatioChart", {
       type: "line",
@@ -2499,10 +2656,6 @@
   function renderActiveTab(tabName) {
     if (tabName === "plan") {
       renderPlan();
-      return;
-    }
-    if (tabName === "purchases") {
-      renderPurchases();
       return;
     }
     if (tabName === "gradeImport") {
@@ -2798,13 +2951,6 @@
     children.push(docxSubHeading("집중 등급 비율 추이"));
     children.push(docxChartImage(images.gradeRatioChart, "집중 등급 비율 차트", 560, 280));
 
-    children.push(docxSubHeading(`${gData.currentYear} / ${gData.compareYear} 등급별 비교`));
-    children.push(docxDataTable(
-      ["등급", `${gData.currentYear} 입고량`, `${gData.currentYear} 비중`, `${gData.compareYear} 입고량`, `${gData.compareYear} 비중`, "증감"],
-      gData.comparisonTable.map((r) => [r.category, formatNumber(r.currentQty), formatPercent(r.currentShare, 2),
-        formatNumber(r.compareQty), formatPercent(r.compareShare, 2), formatPercent(r.diffShare, 2)])
-    ));
-
     return children;
   }
 
@@ -2821,7 +2967,7 @@
 
     try {
       const currentActiveTab = document.querySelector(".tab-btn.active")?.dataset.tab || "plan";
-      const dataTabs = ["plan", "purchases", "gradeImport"];
+      const dataTabs = ["plan", "gradeImport"];
 
       for (const tab of dataTabs) {
         const section = document.getElementById(`tab-${tab}`);
@@ -2887,8 +3033,7 @@
 
       const sectionDefs = [
         { title: "1. 부재료실적 모니터링", builder: buildDocxPlanSection },
-        { title: "2. 구매실적", builder: buildDocxPurchasesSection },
-        { title: "3. 등급별현황/수입관리", builder: buildDocxGradeImportSection }
+        { title: "2. 등급별현황/수입관리", builder: buildDocxGradeImportSection }
       ];
 
       const sections = [coverSection];
@@ -2944,6 +3089,281 @@
     });
   }
 
+  /* ── 챗봇 (floating popup) ── */
+
+  function parseChatQuery(text) {
+    const query = { months: [], keywords: [], range: null };
+    const monthMatch = text.match(/(\d{1,2})\s*월/g);
+    if (monthMatch) {
+      monthMatch.forEach(function (m) {
+        const num = parseInt(m, 10);
+        if (num >= 1 && num <= 12) { query.months.push(num - 1); }
+      });
+    }
+    if (/상반기/.test(text)) { query.range = "상반기"; }
+    if (/하반기/.test(text)) { query.range = "하반기"; }
+    if (/전체|올해|연간|연도|합계/.test(text)) { query.range = "전체"; }
+
+    const kwMap = [
+      [/계획/, "계획"], [/실적/, "실적"], [/달성률|달성율/, "달성률"],
+      [/누계|누적/, "누계"], [/거래처|공급/, "거래처"], [/등급|비중|비율/, "등급"],
+      [/구매|입고/, "구매"], [/납품/, "납품"], [/단가/, "단가"], [/금액/, "금액"],
+      [/배분|공장|인천|포항/, "배분"], [/수입|선적|운송|도착/, "수입"],
+      [/목표|연간/, "목표"], [/최대|최고|최소|최저/, "비교"]
+    ];
+    kwMap.forEach(function (pair) {
+      if (pair[0].test(text)) { query.keywords.push(pair[1]); }
+    });
+    return query;
+  }
+
+  function chatHas(kw, key) { return kw.indexOf(key) !== -1; }
+
+  function generateChatResponse(text) {
+    const query = parseChatQuery(text);
+    const year = getSelectedYear();
+    const yearLabel = year + "년";
+    const kw = query.keywords;
+
+    // ── 공장 배분 ──
+    if (chatHas(kw, "배분")) {
+      const alloc = getSectionData("allocation");
+      if (!alloc || !alloc.monthly || !alloc.monthly.length) {
+        return yearLabel + " 공장배분 데이터가 없습니다.";
+      }
+      if (query.months.length) {
+        const mi = query.months[0];
+        if (mi < alloc.monthly.length) {
+          const am = alloc.monthly[mi];
+          return (mi + 1) + "월 공장 배분:\n" +
+            "인천 - 계획: " + formatNumber(am.incheonPlan) + "톤, 실적: " + formatNumber(am.incheonActual) + "톤 (달성률 " + formatPercent(am.incheonRate, 1) + ")\n" +
+            "포항 - 계획: " + formatNumber(am.pohangPlan) + "톤, 실적: " + formatNumber(am.pohangActual) + "톤 (달성률 " + formatPercent(am.pohangRate, 1) + ")";
+        }
+      }
+      return yearLabel + " 공장 배분 현황:\n" +
+        "인천 - 계획: " + formatNumber(alloc.incheon.planTotal) + "톤, 실적: " + formatNumber(alloc.incheon.actualTotal) + "톤, 달성률: " + formatPercent(alloc.incheon.achievementRate, 1) + "\n" +
+        "포항 - 계획: " + formatNumber(alloc.pohang.planTotal) + "톤, 실적: " + formatNumber(alloc.pohang.actualTotal) + "톤, 달성률: " + formatPercent(alloc.pohang.achievementRate, 1);
+    }
+
+    // ── 수입/선적 현황 ──
+    if (chatHas(kw, "수입")) {
+      const shipments = getImportShipmentRows(year);
+      if (!shipments || !shipments.length) {
+        return yearLabel + " 수입 선적 데이터가 없습니다.";
+      }
+      const totalQty = shipments.reduce(function (s, r) { return s + r.qty; }, 0);
+      const statusCounts = {};
+      shipments.forEach(function (r) { statusCounts[r.status] = (statusCounts[r.status] || 0) + 1; });
+      const statusText = Object.entries(statusCounts).map(function (e) { return e[0] + " " + e[1] + "건"; }).join(", ");
+      return yearLabel + " 수입 현황:\n총 " + shipments.length + "건, 합계 수량: " + formatNumber(totalQty) + "톤\n상태별: " + statusText;
+    }
+
+    // ── 등급 비중 ──
+    if (chatHas(kw, "등급")) {
+      const gradeData = getGradeImportData();
+      if (!gradeData || !gradeData.comparisonTable || !gradeData.comparisonTable.length) {
+        return yearLabel + " 등급 데이터가 없습니다.";
+      }
+      const lines = gradeData.comparisonTable.map(function (row) {
+        return row.category + ": " + formatPercent(row.currentShare, 2) + " (입고량 " + formatNumber(row.currentQty) + ")";
+      });
+      let result = yearLabel + " 등급별 비중:\n" + lines.join("\n");
+      if (gradeData.lowTurningRatio != null) {
+        result += "\n\n국고하+선반설 비율: " + formatPercent(gradeData.lowTurningRatio, 2);
+        if (gradeData.compareLowTurningRatio != null) {
+          result += " (전년 " + formatPercent(gradeData.compareLowTurningRatio, 2) + ", 증감 " + formatNumber(gradeData.deltaShare, 2) + "%p)";
+        }
+      }
+      return result;
+    }
+
+    // ── 거래처 현황 ──
+    if (chatHas(kw, "거래처") || chatHas(kw, "납품")) {
+      const suppliers = state.supplierAdminItems;
+      if (!suppliers.length) {
+        return "등록된 거래처가 없습니다.";
+      }
+      const totalSupply = suppliers.reduce(function (s, item) { return s + item.yearlySupply; }, 0);
+      const avgPerf = suppliers.reduce(function (s, item) { return s + item.performanceRate; }, 0) / suppliers.length;
+      const topSupplier = suppliers.slice().sort(function (a, b) { return b.yearlySupply - a.yearlySupply; })[0];
+      return "거래처 현황:\n등록 거래처: " + suppliers.length + "개사\n금년 총 납품량: " + formatNumber(totalSupply) + "톤\n평균 납품실적: " + formatPercent(avgPerf, 1) +
+        "\n최대 납품 거래처: " + topSupplier.name + " (" + formatNumber(topSupplier.yearlySupply) + "톤, " + topSupplier.trustGrade + "등급)";
+    }
+
+    // ── 구매 관련 ──
+    if (chatHas(kw, "구매") || chatHas(kw, "금액") || chatHas(kw, "단가")) {
+      const purchData = getPurchasesData();
+      if (!purchData || !purchData.monthly || !purchData.monthly.length) {
+        return yearLabel + " 구매실적 데이터가 없습니다.";
+      }
+      if (query.months.length) {
+        const pmi = query.months[0];
+        if (pmi < purchData.monthly.length) {
+          const pm = purchData.monthly[pmi];
+          return (pmi + 1) + "월 구매실적:\n입고량: " + formatNumber(pm.qty) + "\n입고금액: " + formatCompact(pm.amount) + "\n평균단가: " + formatNumber(pm.avgUnitPrice, 1) + "\n거래처 수: " + pm.supplierCount + "곳";
+        }
+      }
+      if (chatHas(kw, "비교")) {
+        const pMonthly = purchData.monthly;
+        const peakM = pMonthly.slice().sort(function (a, b) { return b.qty - a.qty; })[0];
+        const lowM = pMonthly.slice().sort(function (a, b) { return a.qty - b.qty; })[0];
+        return yearLabel + " 구매 비교:\n최대 구매월: " + peakM.month + " (" + formatNumber(peakM.qty) + ")\n최소 구매월: " + lowM.month + " (" + formatNumber(lowM.qty) + ")";
+      }
+      return yearLabel + " 구매실적 누계:\n입고량: " + purchData.totalQtyDisplay + "\n입고금액: " + purchData.totalAmountDisplay + "\n평균 매입 단가: " + purchData.avgUnitPriceDisplay;
+    }
+
+    // ── 계획/실적/달성률/누계/목표 ──
+    const planData = getActivePlanData();
+    if (!planData || !planData.monthly || !planData.monthly.length) {
+      if (kw.length === 0 && query.months.length === 0 && !query.range) {
+        return "죄송합니다. 질문을 이해하지 못했습니다.\n아래와 같은 질문을 해보세요:\n- \"7월 계획과 실적은?\"\n- \"누계 달성률 알려줘\"\n- \"거래처 현황\"\n- \"등급별 비중\"\n- \"구매 금액\"\n- \"공장 배분 현황\"\n- \"수입 현황\"";
+      }
+      return yearLabel + " 수급계획 데이터가 없습니다.";
+    }
+    const monthly = planData.monthly;
+
+    // 연간 목표
+    if (chatHas(kw, "목표") && !query.months.length) {
+      const annualTarget = monthly.reduce(function (s, r) { return s + r.plan; }, 0);
+      const cumActual = monthly[monthly.length - 1].cumulativeActual;
+      const attRate = monthly[monthly.length - 1].achievementRate;
+      return yearLabel + " 연간 목표: " + formatNumber(annualTarget) + "톤\n누계 실적: " + formatNumber(cumActual) + "톤\n달성률: " + formatPercent(attRate, 1);
+    }
+
+    // 누계 달성률
+    if (chatHas(kw, "누계") || chatHas(kw, "달성률")) {
+      if (query.months.length) {
+        const mIdx = query.months[0];
+        if (mIdx < monthly.length) {
+          const mr = monthly[mIdx];
+          return "1~" + (mIdx + 1) + "월 누계 달성률: " + formatPercent(mr.achievementRate, 1) + "\n누계 계획: " + formatNumber(mr.cumulativePlan) + "톤\n누계 실적: " + formatNumber(mr.cumulativeActual) + "톤";
+        }
+      }
+      const last = monthly[monthly.length - 1];
+      return "1~" + monthly.length + "월 누계 달성률: " + formatPercent(last.achievementRate, 1) + "\n누계 계획: " + formatNumber(last.cumulativePlan) + "톤\n누계 실적: " + formatNumber(last.cumulativeActual) + "톤";
+    }
+
+    // 최대/최소 비교 (계획/실적 맥락)
+    if (chatHas(kw, "비교")) {
+      const bestM = monthly.slice().sort(function (a, b) { return b.actual - a.actual; })[0];
+      const worstM = monthly.slice().sort(function (a, b) { return a.actual - b.actual; })[0];
+      return yearLabel + " 실적 비교:\n최대 실적월: " + bestM.month + " (" + formatNumber(bestM.actual) + "톤)\n최소 실적월: " + worstM.month + " (" + formatNumber(worstM.actual) + "톤)";
+    }
+
+    // 특정 월 계획/실적
+    if (query.months.length) {
+      const idx = query.months[0];
+      if (idx < monthly.length) {
+        const row = monthly[idx];
+        const gap = row.actual - row.plan;
+        const gapText = gap >= 0 ? "+" + formatNumber(gap) : formatNumber(gap);
+        return (idx + 1) + "월 계획: " + formatNumber(row.plan) + "톤\n실적: " + formatNumber(row.actual) + "톤\n차이: " + gapText + "톤\n누계 달성률: " + formatPercent(row.achievementRate, 1);
+      }
+    }
+
+    // 범위 질문
+    if (query.range === "상반기" || query.range === "하반기") {
+      const rStart = query.range === "상반기" ? 0 : 6;
+      const rEnd = query.range === "상반기" ? 6 : 12;
+      const sliced = monthly.slice(rStart, Math.min(rEnd, monthly.length));
+      if (!sliced.length) { return query.range + " 데이터가 없습니다."; }
+      const sumPlan = sliced.reduce(function (s, r) { return s + r.plan; }, 0);
+      const sumActual = sliced.reduce(function (s, r) { return s + r.actual; }, 0);
+      const hRate = sumPlan ? (sumActual / sumPlan) * 100 : 0;
+      return query.range + " 합계:\n계획: " + formatNumber(sumPlan) + "톤\n실적: " + formatNumber(sumActual) + "톤\n달성률: " + formatPercent(hRate, 1);
+    }
+
+    // 전체/연간 범위
+    if (query.range === "전체") {
+      const totalPlan = monthly.reduce(function (s, r) { return s + r.plan; }, 0);
+      const totalActual = monthly.reduce(function (s, r) { return s + r.actual; }, 0);
+      const totalRate = totalPlan ? (totalActual / totalPlan) * 100 : 0;
+      return yearLabel + " 전체 합계:\n계획: " + formatNumber(totalPlan) + "톤\n실적: " + formatNumber(totalActual) + "톤\n달성률: " + formatPercent(totalRate, 1);
+    }
+
+    // 계획 또는 실적 키워드만 (월 없이)
+    if (chatHas(kw, "계획") || chatHas(kw, "실적")) {
+      const tPlan = monthly.reduce(function (s, r) { return s + r.plan; }, 0);
+      const tActual = monthly.reduce(function (s, r) { return s + r.actual; }, 0);
+      const tRate = tPlan ? (tActual / tPlan) * 100 : 0;
+      return yearLabel + " 전체:\n계획 합계: " + formatNumber(tPlan) + "톤\n실적 합계: " + formatNumber(tActual) + "톤\n달성률: " + formatPercent(tRate, 1);
+    }
+
+    return "죄송합니다. 질문을 이해하지 못했습니다.\n아래와 같은 질문을 해보세요:\n- \"7월 계획과 실적은?\"\n- \"누계 달성률 알려줘\"\n- \"거래처 현황\"\n- \"등급별 비중\"\n- \"구매 금액\"\n- \"공장 배분 현황\"\n- \"수입 현황\"";
+  }
+
+  function addChatMessage(container, text, role) {
+    const div = document.createElement("div");
+    div.className = "chatbot-msg " + role;
+    div.textContent = text;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function renderChatSuggestions(messages, handleChatSend) {
+    const existing = messages.querySelector(".chatbot-suggestions");
+    if (existing) { existing.remove(); }
+    const suggestions = document.createElement("div");
+    suggestions.className = "chatbot-suggestions";
+    const chips = ["7월 계획과 실적은?", "누계 달성률 알려줘", "거래처 현황", "등급별 비중은?", "구매 금액", "공장 배분 현황"];
+    chips.forEach(function (chipText) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "chatbot-chip";
+      btn.textContent = chipText;
+      btn.addEventListener("click", function () { handleChatSend(chipText); });
+      suggestions.appendChild(btn);
+    });
+    messages.appendChild(suggestions);
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function setupChatbot() {
+    const popup = document.getElementById("chatbotPopup");
+    const fab = document.getElementById("chatbotFab");
+    const fabIcon = document.getElementById("chatbotFabIcon");
+    const closeBtn = document.getElementById("chatbotCloseBtn");
+    const resetBtn = document.getElementById("chatbotResetBtn");
+    const messages = document.getElementById("chatbotMessages");
+    const input = document.getElementById("chatbotInput");
+    const sendBtn = document.getElementById("chatbotSendBtn");
+    if (!popup || !fab || !messages || !input || !sendBtn) { return; }
+
+    function togglePopup() {
+      const isOpen = popup.classList.contains("open");
+      popup.classList.toggle("open");
+      fabIcon.textContent = isOpen ? "\uD83D\uDCAC" : "\u2715";
+      if (!isOpen) { input.focus(); }
+    }
+
+    function resetChat() {
+      messages.innerHTML = "";
+      addChatMessage(messages, "안녕하세요! " + getSelectedYear() + "년 대시보드 데이터에 대해 질문해 주세요.", "bot");
+      renderChatSuggestions(messages, handleChatSend);
+    }
+
+    function handleChatSend(text) {
+      const question = (text || input.value).trim();
+      if (!question) { return; }
+      input.value = "";
+      const chipContainer = messages.querySelector(".chatbot-suggestions");
+      if (chipContainer) { chipContainer.remove(); }
+      addChatMessage(messages, question, "user");
+      const answer = generateChatResponse(question);
+      addChatMessage(messages, answer, "bot");
+    }
+
+    fab.addEventListener("click", togglePopup);
+    if (closeBtn) { closeBtn.addEventListener("click", togglePopup); }
+    if (resetBtn) { resetBtn.addEventListener("click", resetChat); }
+    sendBtn.addEventListener("click", function () { handleChatSend(); });
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); handleChatSend(); }
+    });
+
+    resetChat();
+  }
+
   function init() {
     window.refreshLoggedInUserDisplay = setDateAndUser;
     setupPlanPaste();
@@ -2955,6 +3375,7 @@
     setupSortableTables();
     setupSupplierFilters();
     setupSupplierAdmin();
+    setupChatbot();
     attachEvents();
 
     const url = new URL(location.href);
