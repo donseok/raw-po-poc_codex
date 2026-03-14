@@ -241,7 +241,7 @@
 
 [data-theme="dark"] .btn-outline:hover {
   border-color: #5c6bc0;
-  color: #7986cb;
+  color: #9fa8da;
 }
 
 [data-theme="dark"] .toolbar-input,
@@ -281,7 +281,7 @@
 [data-theme="dark"] .pagination-btn:hover:not(.active):not(:disabled) {
   background: #252540;
   border-color: #5c6bc0;
-  color: #7986cb;
+  color: #9fa8da;
 }
 
 [data-theme="dark"] .pagination-btn.active {
@@ -316,7 +316,7 @@
 [data-theme="dark"] .chatbot-chip {
   border-color: #44446b;
   background: #252540;
-  color: #7986cb;
+  color: #9fa8da;
 }
 
 [data-theme="dark"] .chatbot-chip:hover {

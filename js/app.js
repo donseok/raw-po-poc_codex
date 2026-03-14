@@ -755,6 +755,12 @@
 
   function makeBarChart(key, canvasId, config) {
     destroyChart(key);
+    // Add top padding for bar/line charts with value labels to prevent clipping
+    if (config.type !== "doughnut" && config.options?.plugins?.valueLabelPlugin?.enabled) {
+      if (!config.options.layout) config.options.layout = {};
+      if (!config.options.layout.padding) config.options.layout.padding = {};
+      if (config.options.layout.padding.top === undefined) config.options.layout.padding.top = 22;
+    }
     chartInstances[key] = new Chart(document.getElementById(canvasId), config);
   }
 
