@@ -333,26 +333,21 @@
 
   function parseRawTransactionText(rawText) {
     const gradeMap = getDetailedToMacroMap();
-    const rows = rawText
-      .split(/\r?\n/)
-      .map((line) => line.split("\t").map((cell) => normalizeClipboardCell(cell)))
-      .filter((cells) => cells.some(Boolean));
-
+    const lines = rawText.split(/\r?\n/);
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     const parsed = [];
-    rows.forEach((cells) => {
-      if (cells.length < 5) {
-        return;
-      }
-      const [dateText, supplier, detailedGrade, unitPriceText, amountText] = cells;
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) {
-        return;
-      }
-      const unitPrice = parseClipboardNumber(unitPriceText);
-      const amount = parseClipboardNumber(amountText);
-      if (!supplier || !detailedGrade || unitPrice === null || amount === null) {
-        return;
-      }
-      const month = Number(dateText.split("-")[1]);
+
+    for (let i = 0, len = lines.length; i < len; i++) {
+      const cells = lines[i].split("\t");
+      if (cells.length < 5) continue;
+      const dateText = normalizeClipboardCell(cells[0]);
+      if (!dateRegex.test(dateText)) continue;
+      const supplier = normalizeClipboardCell(cells[1]);
+      const detailedGrade = normalizeClipboardCell(cells[2]);
+      const unitPrice = parseClipboardNumber(cells[3]);
+      const amount = parseClipboardNumber(cells[4]);
+      if (!supplier || !detailedGrade || unitPrice === null || amount === null) continue;
+      const month = Number(dateText.substring(5, 7));
       parsed.push({
         date: dateText,
         month,
@@ -361,9 +356,9 @@
         macro: gradeMap[detailedGrade] || "기타",
         unitPrice,
         amount,
-        qty: unitPrice ? roundNumber(amount / unitPrice, 0) : 0
+        qty: unitPrice ? (amount / unitPrice + 0.5) | 0 : 0
       });
-    });
+    }
 
     if (!parsed.length) {
       throw new Error("붙여넣은 내용에서 유효한 원본 실적 행을 찾지 못했습니다.");
@@ -372,22 +367,80 @@
     return parsed;
   }
 
+  function parseRawTransactionTextAsync(rawText, progressCallback) {
+    return new Promise((resolve, reject) => {
+      const gradeMap = getDetailedToMacroMap();
+      const lines = rawText.split(/\r?\n/);
+      const totalLines = lines.length;
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      const parsed = [];
+      const CHUNK = 20000;
+      let offset = 0;
+
+      function processChunk() {
+        const end = Math.min(offset + CHUNK, totalLines);
+        for (let i = offset; i < end; i++) {
+          const cells = lines[i].split("\t");
+          if (cells.length < 5) continue;
+          const dateText = normalizeClipboardCell(cells[0]);
+          if (!dateRegex.test(dateText)) continue;
+          const supplier = normalizeClipboardCell(cells[1]);
+          const detailedGrade = normalizeClipboardCell(cells[2]);
+          const unitPrice = parseClipboardNumber(cells[3]);
+          const amount = parseClipboardNumber(cells[4]);
+          if (!supplier || !detailedGrade || unitPrice === null || amount === null) continue;
+          const month = Number(dateText.substring(5, 7));
+          parsed.push({
+            date: dateText,
+            month,
+            supplier,
+            detailedGrade,
+            macro: gradeMap[detailedGrade] || "기타",
+            unitPrice,
+            amount,
+            qty: unitPrice ? (amount / unitPrice + 0.5) | 0 : 0
+          });
+        }
+        offset = end;
+        if (progressCallback) progressCallback(Math.min(offset / totalLines, 1));
+        if (offset < totalLines) {
+          setTimeout(processChunk, 0);
+        } else {
+          if (!parsed.length) {
+            reject(new Error("붙여넣은 내용에서 유효한 원본 실적 행을 찾지 못했습니다."));
+          } else {
+            resolve(parsed);
+          }
+        }
+      }
+      processChunk();
+    });
+  }
+
   function normalizeRawTransactions(payload) {
     if (!Array.isArray(payload)) {
       return [];
     }
-    return payload
-      .map((item) => ({
-        date: String(item.date || ""),
-        month: Number(item.month),
-        supplier: String(item.supplier || "").trim(),
-        detailedGrade: String(item.detailedGrade || "").trim(),
+    const result = [];
+    for (let i = 0, len = payload.length; i < len; i++) {
+      const item = payload[i];
+      const date = String(item.date || "");
+      const month = Number(item.month);
+      const supplier = String(item.supplier || "").trim();
+      const detailedGrade = String(item.detailedGrade || "").trim();
+      if (!date || !supplier || !detailedGrade || month < 1 || month > 12) continue;
+      result.push({
+        date,
+        month,
+        supplier,
+        detailedGrade,
         macro: String(item.macro || "기타").trim(),
         unitPrice: Number(item.unitPrice) || 0,
         amount: Number(item.amount) || 0,
         qty: Number(item.qty) || 0
-      }))
-      .filter((item) => item.date && item.supplier && item.detailedGrade && item.month >= 1 && item.month <= 12);
+      });
+    }
+    return result;
   }
 
   function loadRawTransactions() {
@@ -414,7 +467,11 @@
     if (window.appStorage) {
       window.appStorage.set(RAW_TRANSACTION_STORAGE_KEY, data);
     } else {
-      localStorage.setItem(RAW_TRANSACTION_STORAGE_KEY, JSON.stringify(data));
+      try {
+        localStorage.setItem(RAW_TRANSACTION_STORAGE_KEY, JSON.stringify(data));
+      } catch (e) {
+        console.warn("localStorage 저장 실패 (용량 초과 가능):", e.message);
+      }
     }
   }
 
@@ -430,16 +487,15 @@
     }
     const rows = state.rawTransactionsByYear?.[String(year)] || [];
     const gradeMap = getDetailedToMacroMap();
-    const result = rows.map((row) => ({
-      ...row,
-      macro: gradeMap[row.detailedGrade] || "기타"
-    }));
+    for (let i = 0, len = rows.length; i < len; i++) {
+      rows[i].macro = gradeMap[rows[i].detailedGrade] || "기타";
+    }
     if (String(year) === getSelectedYear()) {
       _txCache.key = key;
       _txCache.year = String(year);
-      _txCache.data = result;
+      _txCache.data = rows;
     }
-    return result;
+    return rows;
   }
 
   function _invalidateTxCache() {
@@ -456,12 +512,15 @@
 
   function buildSupplierDatasetFromTransactions(transactions) {
     const monthlyBySupplier = new Map();
-    transactions.forEach((tx) => {
-      if (!monthlyBySupplier.has(tx.supplier)) {
-        monthlyBySupplier.set(tx.supplier, Array.from({ length: 12 }, () => 0));
+    for (let i = 0, len = transactions.length; i < len; i++) {
+      const tx = transactions[i];
+      let arr = monthlyBySupplier.get(tx.supplier);
+      if (!arr) {
+        arr = new Float64Array(12);
+        monthlyBySupplier.set(tx.supplier, arr);
       }
-      monthlyBySupplier.get(tx.supplier)[tx.month - 1] += tx.qty;
-    });
+      arr[tx.month - 1] += tx.qty;
+    }
 
     const ranked = [...monthlyBySupplier.entries()]
       .map(([name, monthlySeries]) => ({
@@ -491,12 +550,13 @@
     }));
     const monthlySuppliers = Array.from({ length: 12 }, () => new Set());
 
-    transactions.forEach((tx) => {
+    for (let i = 0, len = transactions.length; i < len; i++) {
+      const tx = transactions[i];
       const bucket = monthly[tx.month - 1];
       bucket.qty += tx.qty;
       bucket.amount += tx.amount;
       monthlySuppliers[tx.month - 1].add(tx.supplier);
-    });
+    }
 
     monthly.forEach((bucket, index) => {
       bucket.qty = roundNumber(bucket.qty, 0);
@@ -520,11 +580,13 @@
 
   function buildGradeImportDatasetFromTransactions(currentYear, currentTransactions, compareYear, compareTransactions) {
     const summarizeMix = (transactions) => {
-      const totalQty = transactions.reduce((sum, tx) => sum + tx.qty, 0);
+      let totalQty = 0;
       const macroTotals = {};
-      transactions.forEach((tx) => {
+      for (let i = 0, len = transactions.length; i < len; i++) {
+        const tx = transactions[i];
+        totalQty += tx.qty;
         macroTotals[tx.macro] = (macroTotals[tx.macro] || 0) + tx.qty;
-      });
+      }
       return Object.entries(macroTotals)
         .map(([name, qty]) => ({
           name,
@@ -534,18 +596,22 @@
         .sort((left, right) => right.qty - left.qty);
     };
 
-    const summarizeMonthlyRatio = (transactions) =>
-      Array.from({ length: 12 }, (_, index) => {
-        const monthRows = transactions.filter((tx) => tx.month === index + 1);
-        const totalQty = monthRows.reduce((sum, tx) => sum + tx.qty, 0);
-        const focusedQty = monthRows
-          .filter((tx) => ["국고하", "선반설"].includes(tx.macro))
-          .reduce((sum, tx) => sum + tx.qty, 0);
-        return {
-          month: `${index + 1}월`,
-          ratio: roundNumber(percent(focusedQty, totalQty), 2)
-        };
-      });
+    const summarizeMonthlyRatio = (transactions) => {
+      const monthTotal = new Float64Array(12);
+      const monthFocused = new Float64Array(12);
+      for (let i = 0, len = transactions.length; i < len; i++) {
+        const tx = transactions[i];
+        const idx = tx.month - 1;
+        monthTotal[idx] += tx.qty;
+        if (tx.macro === "국고하" || tx.macro === "선반설") {
+          monthFocused[idx] += tx.qty;
+        }
+      }
+      return Array.from({ length: 12 }, (_, index) => ({
+        month: `${index + 1}월`,
+        ratio: roundNumber(percent(monthFocused[index], monthTotal[index]), 2)
+      }));
+    };
 
     const currentMix = summarizeMix(currentTransactions);
     const compareMix = summarizeMix(compareTransactions);
@@ -866,11 +932,13 @@
   }
 
   function buildMacroGradeMix(transactions) {
-    const totalQty = transactions.reduce((sum, tx) => sum + tx.qty, 0);
+    let totalQty = 0;
     const macroTotals = {};
-    transactions.forEach((tx) => {
+    for (let i = 0, len = transactions.length; i < len; i++) {
+      const tx = transactions[i];
+      totalQty += tx.qty;
       macroTotals[tx.macro] = (macroTotals[tx.macro] || 0) + tx.qty;
-    });
+    }
     return Object.entries(macroTotals)
       .map(([name, qty]) => ({
         name,
@@ -1993,17 +2061,38 @@
 
   function applyRawPasteInput() {
     try {
-      const gridRows = readRawPasteGrid();
-      const rawText = gridRows
+      const allRows = _getRawPasteAllRows();
+      const rawText = allRows
+        .filter((row) => row.date || row.supplier || row.detailedGrade)
         .map((row) => [row.date, row.supplier, row.detailedGrade, row.unitPrice || "", row.amount || ""].join("\t"))
         .join("\n");
-      const parsed = parseRawTransactionText(rawText);
-      state.rawTransactionsByYear[getSelectedYear()] = parsed;
-      saveRawTransactions();
-      syncRawPasteInputForYear();
-      updateRawPasteStatus();
-      renderActiveTab(document.querySelector(".tab-content.active")?.id.replace("tab-", "") || "plan");
-      window.showToast?.("원본 실적 데이터를 반영했습니다.", "success");
+
+      if (allRows.length > 20000) {
+        window.showToast?.(`${formatNumber(allRows.length)}건 처리 중...`, "info");
+        parseRawTransactionTextAsync(rawText, (progress) => {
+          const pct = Math.round(progress * 100);
+          if (pct % 20 === 0) window.showToast?.(`처리 중... ${pct}%`, "info");
+        }).then((parsed) => {
+          state.rawTransactionsByYear[getSelectedYear()] = parsed;
+          _invalidateTxCache();
+          saveRawTransactions();
+          syncRawPasteInputForYear();
+          updateRawPasteStatus();
+          renderActiveTab(document.querySelector(".tab-content.active")?.id.replace("tab-", "") || "plan");
+          window.showToast?.(`원본 실적 데이터 ${formatNumber(parsed.length)}건을 반영했습니다.`, "success");
+        }).catch((error) => {
+          window.showToast?.(error.message || "원본 실적 데이터를 읽지 못했습니다.", "error");
+        });
+      } else {
+        const parsed = parseRawTransactionText(rawText);
+        state.rawTransactionsByYear[getSelectedYear()] = parsed;
+        _invalidateTxCache();
+        saveRawTransactions();
+        syncRawPasteInputForYear();
+        updateRawPasteStatus();
+        renderActiveTab(document.querySelector(".tab-content.active")?.id.replace("tab-", "") || "plan");
+        window.showToast?.("원본 실적 데이터를 반영했습니다.", "success");
+      }
     } catch (error) {
       window.showToast?.(error.message || "원본 실적 데이터를 읽지 못했습니다.", "error");
     }
@@ -2067,22 +2156,58 @@
         return;
       }
       event.preventDefault();
-      const rows = rawText
-        .split(/\r?\n/)
-        .map((line) => line.split("\t").map((cell) => normalizeClipboardCell(cell)))
-        .filter((cells) => cells.some(Boolean));
-      const parsed = rows.map((cells) => ({
-        date: cells[0] || "",
-        supplier: cells[1] || "",
-        detailedGrade: cells[2] || "",
-        unitPrice: parseClipboardNumber(cells[3] || "") || 0,
-        amount: parseClipboardNumber(cells[4] || "") || 0
-      }));
-      state.rawTransactionsByYear[getSelectedYear()] = parsed;
-      _invalidateTxCache();
-      state.rawPastePage = 0;
-      syncRawPasteInputForYear();
-      window.showToast?.(`엑셀 값 ${formatNumber(parsed.length)}건을 붙여넣었습니다. '원본 데이터 반영' 버튼을 눌러 저장하세요.`, "success");
+      const lines = rawText.split(/\r?\n/);
+      const totalLines = lines.length;
+      const CHUNK = 20000;
+
+      if (totalLines > CHUNK) {
+        window.showToast?.(`${formatNumber(totalLines)}건 처리 중...`, "info");
+        const parsed = [];
+        let offset = 0;
+        function processChunk() {
+          const end = Math.min(offset + CHUNK, totalLines);
+          for (let i = offset; i < end; i++) {
+            const cells = lines[i].split("\t");
+            if (cells.length < 2) continue;
+            parsed.push({
+              date: normalizeClipboardCell(cells[0]) || "",
+              supplier: normalizeClipboardCell(cells[1]) || "",
+              detailedGrade: normalizeClipboardCell(cells[2]) || "",
+              unitPrice: parseClipboardNumber(cells[3] || "") || 0,
+              amount: parseClipboardNumber(cells[4] || "") || 0
+            });
+          }
+          offset = end;
+          if (offset < totalLines) {
+            setTimeout(processChunk, 0);
+          } else {
+            state.rawTransactionsByYear[getSelectedYear()] = parsed;
+            _invalidateTxCache();
+            state.rawPastePage = 0;
+            syncRawPasteInputForYear();
+            window.showToast?.(`엑셀 값 ${formatNumber(parsed.length)}건을 붙여넣었습니다. '원본 데이터 반영' 버튼을 눌러 저장하세요.`, "success");
+          }
+        }
+        processChunk();
+      } else {
+        const parsed = [];
+        for (let i = 0; i < totalLines; i++) {
+          const cells = lines[i].split("\t");
+          if (cells.length < 2) continue;
+          parsed.push({
+            date: normalizeClipboardCell(cells[0]) || "",
+            supplier: normalizeClipboardCell(cells[1]) || "",
+            detailedGrade: normalizeClipboardCell(cells[2]) || "",
+            unitPrice: parseClipboardNumber(cells[3] || "") || 0,
+            amount: parseClipboardNumber(cells[4] || "") || 0
+          });
+        }
+        state.rawTransactionsByYear[getSelectedYear()] = parsed;
+        _invalidateTxCache();
+        state.rawPastePage = 0;
+        syncRawPasteInputForYear();
+        window.showToast?.(`엑셀 값 ${formatNumber(parsed.length)}건을 붙여넣었습니다. '원본 데이터 반영' 버튼을 눌러 저장하세요.`, "success");
+      }
     });
 
     grid?.addEventListener("focusout", (event) => {
