@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
@@ -43,6 +43,7 @@
     <nav class="tab-nav" aria-label="대시보드 섹션">
       <button class="tab-btn active" data-tab="plan">부재료실적 모니터링</button>
       <button class="tab-btn" data-tab="gradeImport">등급별현황/수입관리</button>
+      <button class="tab-btn" data-tab="supplier">거래처 관리</button>
       <button class="tab-btn" data-tab="notice">공지사항</button>
       <button class="tab-btn" data-tab="user">사용자관리</button>
     </nav>
@@ -231,36 +232,6 @@
           </div>
         </article>
 
-        <section class="supplier-admin-section">
-          <div class="supplier-admin-toolbar">
-            <div class="supplier-admin-title">
-              <div class="card-title" style="margin: 0;"><span class="icon"></span>거래처 관리</div>
-            </div>
-            <button class="btn btn-primary supplier-admin-add" type="button" id="supplierAddBtn">+ 거래처 등록</button>
-          </div>
-
-          <article class="card supplier-admin-card">
-            <div class="table-wrap supplier-admin-table-wrap">
-              <table class="supplier-admin-table sortable-table" data-export="suppliers">
-                <thead>
-                  <tr>
-                    <th>코드</th>
-                    <th>거래처명</th>
-                    <th>지역</th>
-                    <th>대표자</th>
-                    <th>연락처</th>
-                    <th class="text-right">월 공급능력(톤)</th>
-                    <th class="text-right">금년 납품량(톤)</th>
-                    <th>신뢰등급</th>
-                    <th class="text-right">납품실적</th>
-                  </tr>
-                </thead>
-                <tbody id="supplierAdminTable"></tbody>
-              </table>
-            </div>
-          </article>
-        </section>
-
         <article class="card plan-paste-card">
           <button
             class="plan-paste-toggle"
@@ -270,7 +241,7 @@
             aria-controls="rawPastePanel"
           >
             <div class="plan-paste-toggle-copy">
-              <div class="card-title" style="margin: 0;"><span class="icon"></span>거래처 납품 실적관리 데이터</div>
+              <div class="card-title" style="margin: 0;"><span class="icon"></span>거래처 납품 실적관리 데이터 (인천공장)</div>
               <p class="card-copy">첨부한 엑셀 양식 그대로 `전기일 / 공급업체 / 검수등급 / 단가 / 입고금액` 5개 열을 복사해 붙여넣습니다.</p>
             </div>
             <span class="plan-paste-toggle-icon" aria-hidden="true"></span>
@@ -302,6 +273,7 @@
                 <tbody id="rawPasteGridBody"></tbody>
               </table>
             </div>
+            <div class="pagination raw-paste-pagination" id="rawPastePagination"></div>
             <div class="paste-status" id="rawPasteStatus">선택 연도의 원본 실적 데이터가 아직 입력되지 않았습니다.</div>
           </div>
         </article>
@@ -477,6 +449,44 @@
                 </tr>
               </thead>
               <tbody id="importShipmentTable"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section class="tab-content section-stack" id="tab-supplier">
+        <div class="toolbar">
+          <div>
+            <div class="card-title" style="margin: 0;"><span class="icon"></span>거래처 관리</div>
+            <p class="card-copy">거래처를 등록하고 수정, 삭제할 수 있도록 별도 메뉴에서 관리합니다.</p>
+          </div>
+          <button class="btn btn-primary supplier-admin-add" type="button" id="supplierAddBtn">+ 거래처 등록</button>
+        </div>
+
+        <div class="kpi-row" id="supplierAdminKpis"></div>
+
+        <article class="card supplier-admin-card">
+          <div class="table-toolbar">
+            <div class="card-title" style="margin: 0;"><span class="icon"></span>거래처 목록</div>
+            <div class="hint" id="supplierAdminHint"></div>
+          </div>
+          <div class="table-wrap supplier-admin-table-wrap">
+            <table class="supplier-admin-table sortable-table" data-export="suppliers">
+              <thead>
+                <tr>
+                  <th>코드</th>
+                  <th>거래처명</th>
+                  <th>지역</th>
+                  <th>대표자</th>
+                  <th>연락처</th>
+                  <th class="text-right">월 공급능력(톤)</th>
+                  <th class="text-right">금년 납품량(톤)</th>
+                  <th>신뢰등급</th>
+                  <th class="text-right">납품실적</th>
+                  <th class="no-sort text-center">관리</th>
+                </tr>
+              </thead>
+              <tbody id="supplierAdminTable"></tbody>
             </table>
           </div>
         </article>

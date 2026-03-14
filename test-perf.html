@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>성능 테스트 - 2만건 데이터 주입</title>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; padding: 40px; background: #f5f5f5; }
+    .card { background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    button { padding: 12px 24px; border: none; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; margin: 4px; }
+    .btn-primary { background: #1a237e; color: #fff; }
+    .btn-danger { background: #c62828; color: #fff; }
+    .btn-success { background: #2e7d32; color: #fff; }
+    pre { background: #263238; color: #aed581; padding: 16px; border-radius: 8px; overflow: auto; max-height: 300px; font-size: 13px; }
+    .metric { display: inline-block; padding: 8px 16px; border-radius: 8px; background: #e3f2fd; color: #1565c0; font-weight: 700; margin: 4px; }
+    h2 { color: #1a237e; }
+  </style>
+</head>
+<body>
+  <h1>2만건 데이터 성능 테스트</h1>
+
+  <div class="card">
+    <h2>1. 테스트 데이터 생성 & 주입</h2>
+    <p>IndexedDB / localStorage에 2만건의 거래 데이터를 주입합니다.</p>
+    <button class="btn-primary" onclick="injectData(20000)">2만건 주입</button>
+    <button class="btn-primary" onclick="injectData(5000)">5천건 주입</button>
+    <button class="btn-primary" onclick="injectData(1000)">1천건 주입</button>
+    <button class="btn-danger" onclick="clearData()">데이터 삭제</button>
+    <div id="injectResult"></div>
+  </div>
+
+  <div class="card">
+    <h2>2. 대시보드 열기</h2>
+    <p>데이터 주입 후 대시보드를 열어 성능을 확인합니다.</p>
+    <button class="btn-success" onclick="window.open('/login.html','_blank')">대시보드 열기</button>
+  </div>
+
+  <div class="card">
+    <h2>3. 로그</h2>
+    <pre id="log">대기 중...</pre>
+  </div>
+
+  <script>
+    const logEl = document.getElementById('log');
+    function log(msg) {
+      logEl.textContent += '\n' + msg;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    const suppliers = ['한국철강','대한금속','서울스크랩','인천메탈','부산철재','경기자원','충남금속','대전스틸'];
+    const grades = ['생철A','생철B','중량B','중량AS','중량A','경량B','경량A','길로틴A','선반A','압축C','경량TC','슈레디B','모터블럭','압축D','생철AL','중량C'];
+
+    function generateRows(count) {
+      const rows = [];
+      for (let i = 0; i < count; i++) {
+        const month = (i % 12) + 1;
+        const day = (i % 28) + 1;
+        const date = `2024-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+        const supplier = suppliers[i % suppliers.length];
+        const grade = grades[i % grades.length];
+        const unitPrice = 200000 + Math.floor(Math.random() * 100000);
+        const amount = unitPrice * (10 + Math.floor(Math.random() * 50));
+        rows.push({
+          date,
+          month,
+          supplier,
+          detailedGrade: grade,
+          macro: '기타',
+          unitPrice,
+          amount,
+          qty: Math.round(amount / unitPrice)
+        });
+      }
+      return rows;
+    }
+
+    function injectData(count) {
+      const t0 = performance.now();
+      const rows = generateRows(count);
+      const genTime = (performance.now() - t0).toFixed(1);
+      log(`[생성] ${count}건 생성 완료 (${genTime}ms)`);
+
+      const payload = { "2024": rows };
+
+      // localStorage에 저장
+      const t1 = performance.now();
+      localStorage.setItem('rawTransactionDataByYear', JSON.stringify(payload));
+      const storeTime = (performance.now() - t1).toFixed(1);
+      log(`[저장] localStorage 저장 완료 (${storeTime}ms)`);
+
+      // IndexedDB에도 저장 시도
+      const dbReq = indexedDB.open('appStorageDB', 1);
+      dbReq.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('kv')) {
+          db.createObjectStore('kv');
+        }
+      };
+      dbReq.onsuccess = (e) => {
+        const db = e.target.result;
+        try {
+          const tx = db.transaction('kv', 'readwrite');
+          tx.objectStore('kv').put(payload, 'rawTransactionDataByYear');
+          tx.oncomplete = () => {
+            log(`[저장] IndexedDB 저장 완료`);
+          };
+        } catch(err) {
+          log(`[경고] IndexedDB 저장 실패: ${err.message}`);
+        }
+      };
+
+      const sizeKB = (JSON.stringify(payload).length / 1024).toFixed(0);
+      document.getElementById('injectResult').innerHTML =
+        `<div class="metric">${count.toLocaleString()}건</div>` +
+        `<div class="metric">${sizeKB} KB</div>` +
+        `<div class="metric">생성 ${genTime}ms</div>`;
+      log(`[완료] 데이터 크기: ${sizeKB}KB`);
+    }
+
+    function clearData() {
+      localStorage.removeItem('rawTransactionDataByYear');
+      const dbReq = indexedDB.open('appStorageDB', 1);
+      dbReq.onsuccess = (e) => {
+        const db = e.target.result;
+        try {
+          const tx = db.transaction('kv', 'readwrite');
+          tx.objectStore('kv').delete('rawTransactionDataByYear');
+          tx.oncomplete = () => log('[삭제] IndexedDB 데이터 삭제 완료');
+        } catch(err) {
+          log('[삭제] IndexedDB에 데이터 없음');
+        }
+      };
+      localStorage.removeItem('rawTransactionDataByYear');
+      log('[삭제] localStorage 데이터 삭제 완료');
+      document.getElementById('injectResult').innerHTML = '<div class="metric">삭제 완료</div>';
+    }
+  </script>
+</body>
+</html>

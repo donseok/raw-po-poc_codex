@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   const rawData = window.dashboardData;
   if (!rawData) {
     document.body.innerHTML = "<p style='padding:24px'>대시보드 데이터를 불러오지 못했습니다.</p>";
@@ -134,6 +134,10 @@
   const RAW_TRANSACTION_STORAGE_KEY = "rawTransactionDataByYear";
   const GRADE_MAPPING_STORAGE_KEY = "gradeMacroMappings";
   const PLAN_GRID_ROWS = ["incheonPlan", "incheonActual", "pohangPlan", "pohangActual"];
+  const RAW_PASTE_PAGE_SIZE = 100;
+  let _gradeMappingsVersion = 0;
+  const _txCache = { key: null, data: null };
+  const _aggCache = { suppliers: { key: null, data: null }, purchases: { key: null, data: null }, gradeImport: { key: null, data: null } };
   const colors = {
     primary: "#1a237e",
     primaryLight: "#283593",
@@ -165,12 +169,16 @@
     selectedYear: String(data.meta.defaultYear),
     planOverrides: {},
     supplierAdminItems: [],
+    supplierFormMode: "create",
+    supplierEditingCode: "",
     rawTransactionsByYear: {},
-    gradeMappings: cloneMappings(DEFAULT_GRADE_MAPPINGS)
+    gradeMappings: cloneMappings(DEFAULT_GRADE_MAPPINGS),
+    rawPastePage: 0
   };
 
   const tabLabels = {
     plan: "부재료실적 모니터링",
+    supplier: "거래처 관리",
     gradeImport: "등급별현황/수입관리",
     notice: "공지사항",
     user: "사용자관리"
@@ -314,6 +322,8 @@
   }
 
   function saveGradeMappings() {
+    _gradeMappingsVersion += 1;
+    _invalidateTxCache();
     if (window.appStorage) {
       window.appStorage.set(GRADE_MAPPING_STORAGE_KEY, state.gradeMappings);
     } else {
@@ -408,13 +418,40 @@
     }
   }
 
+  function _makeTxCacheKey(year) {
+    const rows = state.rawTransactionsByYear?.[String(year)] || [];
+    return `${year}:${rows.length}:${_gradeMappingsVersion}`;
+  }
+
   function getRawTransactionsForYear(year = getSelectedYear()) {
+    const key = _makeTxCacheKey(year);
+    if (_txCache.key === key && _txCache.year === String(year)) {
+      return _txCache.data;
+    }
     const rows = state.rawTransactionsByYear?.[String(year)] || [];
     const gradeMap = getDetailedToMacroMap();
-    return rows.map((row) => ({
+    const result = rows.map((row) => ({
       ...row,
       macro: gradeMap[row.detailedGrade] || "기타"
     }));
+    if (String(year) === getSelectedYear()) {
+      _txCache.key = key;
+      _txCache.year = String(year);
+      _txCache.data = result;
+    }
+    return result;
+  }
+
+  function _invalidateTxCache() {
+    _txCache.key = null;
+    _txCache.data = null;
+    _txCache.year = null;
+    _aggCache.suppliers.key = null;
+    _aggCache.suppliers.data = null;
+    _aggCache.purchases.key = null;
+    _aggCache.purchases.data = null;
+    _aggCache.gradeImport.key = null;
+    _aggCache.gradeImport.data = null;
   }
 
   function buildSupplierDatasetFromTransactions(transactions) {
@@ -679,6 +716,9 @@
     document.querySelectorAll(".sortable-table").forEach((table) => {
       const headers = [...table.tHead.rows[0].cells];
       headers.forEach((header, index) => {
+        if (header.classList.contains("no-sort")) {
+          return;
+        }
         header.addEventListener("click", () => {
           const key = table.dataset.export || table.id;
           const current = state.tableSort[key];
@@ -744,33 +784,57 @@
   }
 
   function getSuppliersData() {
+    const cacheKey = _makeTxCacheKey(getSelectedYear());
+    if (_aggCache.suppliers.key === cacheKey) {
+      return _aggCache.suppliers.data;
+    }
     const rawTransactions = getRawTransactionsForYear();
+    let result;
     if (rawTransactions.length) {
-      return {
+      result = {
         ...(getSectionData("suppliers") || {}),
         trendChart: buildSupplierDatasetFromTransactions(rawTransactions)
       };
+    } else {
+      result = getSectionData("suppliers");
     }
-    return getSectionData("suppliers");
+    _aggCache.suppliers.key = cacheKey;
+    _aggCache.suppliers.data = result;
+    return result;
   }
 
   function getPurchasesData() {
-    const rawTransactions = getRawTransactionsForYear();
-    if (rawTransactions.length) {
-      return buildPurchasesDatasetFromTransactions(rawTransactions);
+    const cacheKey = _makeTxCacheKey(getSelectedYear());
+    if (_aggCache.purchases.key === cacheKey) {
+      return _aggCache.purchases.data;
     }
-    return getSectionData("purchases");
+    const rawTransactions = getRawTransactionsForYear();
+    let result;
+    if (rawTransactions.length) {
+      result = buildPurchasesDatasetFromTransactions(rawTransactions);
+    } else {
+      result = getSectionData("purchases");
+    }
+    _aggCache.purchases.key = cacheKey;
+    _aggCache.purchases.data = result;
+    return result;
   }
 
   function getGradeImportData() {
     const currentYear = getSelectedYear();
-    const currentTransactions = getRawTransactionsForYear(currentYear);
     const base = getSectionData("gradeImport");
+    const compareYear = base?.compareYear || String(Number(currentYear) - 1);
+    const cacheKey = `${_makeTxCacheKey(currentYear)}|${_makeTxCacheKey(compareYear)}`;
+    if (_aggCache.gradeImport.key === cacheKey) {
+      return _aggCache.gradeImport.data;
+    }
+    const currentTransactions = getRawTransactionsForYear(currentYear);
     if (!currentTransactions.length) {
+      _aggCache.gradeImport.key = cacheKey;
+      _aggCache.gradeImport.data = base;
       return base;
     }
 
-    const compareYear = base?.compareYear || String(Number(currentYear) - 1);
     const compareTransactions = getRawTransactionsForYear(compareYear);
     const compareBase = data.years?.[compareYear]?.gradeImport || null;
     const derived = buildGradeImportDatasetFromTransactions(
@@ -792,6 +856,8 @@
       }));
     }
     derived.deltaShare = roundNumber(derived.lowTurningRatio - derived.compareLowTurningRatio, 2);
+    _aggCache.gradeImport.key = cacheKey;
+    _aggCache.gradeImport.data = derived;
     return derived;
   }
 
@@ -799,8 +865,37 @@
     return getSectionData("overview");
   }
 
+  function buildMacroGradeMix(transactions) {
+    const totalQty = transactions.reduce((sum, tx) => sum + tx.qty, 0);
+    const macroTotals = {};
+    transactions.forEach((tx) => {
+      macroTotals[tx.macro] = (macroTotals[tx.macro] || 0) + tx.qty;
+    });
+    return Object.entries(macroTotals)
+      .map(([name, qty]) => ({
+        name,
+        qty: roundNumber(qty, 0),
+        share: roundNumber(percent(qty, totalQty), 2)
+      }))
+      .sort((left, right) => right.qty - left.qty);
+  }
+
   function getIncheonAllocationData() {
     const allocation = getSectionData("allocation");
+    const rawTransactions = getRawTransactionsForYear();
+
+    if (rawTransactions.length) {
+      const gradeMix = buildMacroGradeMix(rawTransactions);
+      const totalQty = gradeMix.reduce((sum, row) => sum + row.qty, 0);
+      const base = allocation?.incheon || {};
+      return {
+        plan: base.plan || totalQty,
+        actual: base.actual || totalQty,
+        achievementRate: base.achievementRate || (base.plan ? roundNumber(percent(totalQty, base.plan), 1) : 100),
+        gradeMix
+      };
+    }
+
     if (!allocation?.incheon) {
       return null;
     }
@@ -948,6 +1043,25 @@
       performanceRates.reduce((sum, value) => sum + value, 0) / performanceRates.length,
       1
     );
+  }
+
+  function getSupplierAdminSummary() {
+    const items = state.supplierAdminItems || [];
+    const totalMonthlyCapacity = items.reduce((sum, item) => sum + (Number(item.monthlyCapacity) || 0), 0);
+    const totalYearlySupply = items.reduce((sum, item) => sum + (Number(item.yearlySupply) || 0), 0);
+    const averagePerformance = getSupplierAdminAveragePerformance();
+    const topSupplier =
+      items
+        .slice()
+        .sort((left, right) => (Number(right.yearlySupply) || 0) - (Number(left.yearlySupply) || 0))[0] || null;
+
+    return {
+      count: items.length,
+      totalMonthlyCapacity,
+      totalYearlySupply,
+      averagePerformance,
+      topSupplier
+    };
   }
 
   function getImportShipmentStatusBadge(status) {
@@ -1511,7 +1625,7 @@
 
     const items = [...state.supplierAdminItems].sort((left, right) => left.code.localeCompare(right.code, "ko"));
     if (!items.length) {
-      tbody.innerHTML = makeUnavailableRow(9, "등록된 거래처가 없습니다.");
+      tbody.innerHTML = makeUnavailableRow(10, "등록된 거래처가 없습니다.");
       return;
     }
 
@@ -1535,16 +1649,61 @@
                 <span>${formatPercent(item.performanceRate, 0)}</span>
               </div>
             </td>
+            <td class="text-center">
+              <div class="table-actions">
+                <button class="btn btn-outline btn-sm" type="button" data-supplier-edit="${item.code}">수정</button>
+                <button class="btn btn-outline btn-sm table-action-danger" type="button" data-supplier-delete="${item.code}">삭제</button>
+              </div>
+            </td>
           </tr>
         `
       )
       .join("");
 
     applyTableSort(document.querySelector('table[data-export="suppliers"]'));
+    tbody.querySelectorAll("[data-supplier-edit]").forEach((button) => {
+      button.addEventListener("click", () => openSupplierForm(button.dataset.supplierEdit));
+    });
+    tbody.querySelectorAll("[data-supplier-delete]").forEach((button) => {
+      button.addEventListener("click", () => deleteSupplier(button.dataset.supplierDelete));
+    });
+  }
+
+  function renderSupplierAdminKpis() {
+    const container = document.getElementById("supplierAdminKpis");
+    if (!container) {
+      return;
+    }
+
+    const summary = getSupplierAdminSummary();
+    container.innerHTML = [
+      kpiCard("등록 거래처", `${formatNumber(summary.count)}<small>개사</small>`, "현재 등록된 거래처 수", ""),
+      kpiCard("월 공급능력 합계", `${formatCompact(summary.totalMonthlyCapacity)}<small></small>`, "거래처 기준 월 가용 물량", "accent"),
+      kpiCard("금년 납품량 합계", `${formatCompact(summary.totalYearlySupply)}<small></small>`, "거래처 관리 기준 누적 납품량", "success"),
+      kpiCard(
+        "대표 거래처",
+        `${summary.topSupplier ? summary.topSupplier.name : "-"}<small></small>`,
+        summary.topSupplier
+          ? `평균 납품실적 ${formatPercent(summary.averagePerformance, 1)} / 최대 납품량 ${formatCompact(summary.topSupplier.yearlySupply)}`
+          : "등록된 거래처가 없습니다.",
+        "warning"
+      )
+    ].join("");
+
+    const hint = document.getElementById("supplierAdminHint");
+    if (hint) {
+      hint.textContent = summary.count
+        ? `평균 납품실적 ${formatPercent(summary.averagePerformance, 1)} / 최대 납품 ${summary.topSupplier?.name || "-"}`
+        : "등록된 거래처가 없습니다.";
+    }
   }
 
   function resetSupplierForm() {
+    state.supplierFormMode = "create";
+    state.supplierEditingCode = "";
     document.getElementById("supplierFormTitle").textContent = "거래처 등록";
+    document.getElementById("supplierSubmitBtn").textContent = "저장";
+    document.getElementById("supplierCode").removeAttribute("readonly");
     document.getElementById("supplierCode").value = "";
     document.getElementById("supplierName").value = "";
     document.getElementById("supplierRegion").value = "";
@@ -1563,9 +1722,30 @@
     return `S${String(maxCode + 1).padStart(3, "0")}`;
   }
 
-  function openSupplierForm() {
+  function openSupplierForm(code = "") {
     resetSupplierForm();
-    document.getElementById("supplierCode").value = getNextSupplierCode();
+    if (code) {
+      const found = state.supplierAdminItems.find((item) => item.code === code);
+      if (!found) {
+        window.showToast?.("선택한 거래처를 찾을 수 없습니다.", "error");
+        return;
+      }
+      state.supplierFormMode = "edit";
+      state.supplierEditingCode = found.code;
+      document.getElementById("supplierFormTitle").textContent = "거래처 수정";
+      document.getElementById("supplierSubmitBtn").textContent = "수정";
+      document.getElementById("supplierCode").value = found.code;
+      document.getElementById("supplierCode").setAttribute("readonly", "readonly");
+      document.getElementById("supplierName").value = found.name;
+      document.getElementById("supplierRegion").value = found.region;
+      document.getElementById("supplierOwner").value = found.owner;
+      document.getElementById("supplierPhone").value = found.phone;
+      document.getElementById("supplierTrust").value = found.trustGrade;
+      document.getElementById("supplierMonthlyCapacity").value = found.monthlyCapacity;
+      document.getElementById("supplierYearlySupply").value = found.yearlySupply;
+    } else {
+      document.getElementById("supplierCode").value = getNextSupplierCode();
+    }
     if (window.showModal) {
       window.showModal("supplierModal");
     }
@@ -1588,31 +1768,63 @@
       return;
     }
 
-    if (state.supplierAdminItems.some((supplier) => supplier.code === item.code)) {
+    const isEditMode = state.supplierFormMode === "edit";
+    if (!isEditMode && state.supplierAdminItems.some((supplier) => supplier.code === item.code)) {
       window.showToast?.("이미 존재하는 거래처 코드입니다.", "error");
       return;
     }
 
-    state.supplierAdminItems.push(item);
+    if (isEditMode) {
+      const targetIndex = state.supplierAdminItems.findIndex((supplier) => supplier.code === state.supplierEditingCode);
+      if (targetIndex === -1) {
+        window.showToast?.("수정할 거래처를 찾을 수 없습니다.", "error");
+        return;
+      }
+      state.supplierAdminItems[targetIndex] = item;
+    } else {
+      state.supplierAdminItems.push(item);
+    }
     saveSupplierAdminItems();
-    renderSupplierAdminTable();
+    renderSupplierManagement();
     renderPlan();
     window.hideModal?.("supplierModal");
-    window.showToast?.("거래처가 등록되었습니다.", "success");
+    resetSupplierForm();
+    window.showToast?.(isEditMode ? "거래처 정보를 수정했습니다." : "거래처가 등록되었습니다.", "success");
+  }
+
+  function deleteSupplier(code) {
+    const found = state.supplierAdminItems.find((item) => item.code === code);
+    if (!found) {
+      window.showToast?.("삭제할 거래처를 찾을 수 없습니다.", "error");
+      return;
+    }
+    if (!window.confirm(`'${found.name}' 거래처를 삭제하시겠습니까?`)) {
+      return;
+    }
+    state.supplierAdminItems = state.supplierAdminItems.filter((item) => item.code !== code);
+    saveSupplierAdminItems();
+    renderSupplierManagement();
+    renderPlan();
+    window.showToast?.("거래처를 삭제했습니다.", "success");
   }
 
   function setupSupplierAdmin() {
     loadSupplierAdminItems();
-    renderSupplierAdminTable();
+    renderSupplierManagement();
 
     const addButton = document.getElementById("supplierAddBtn");
     const submitButton = document.getElementById("supplierSubmitBtn");
     if (addButton) {
-      addButton.addEventListener("click", openSupplierForm);
+      addButton.addEventListener("click", () => openSupplierForm());
     }
     if (submitButton) {
       submitButton.addEventListener("click", submitSupplier);
     }
+  }
+
+  function renderSupplierManagement() {
+    renderSupplierAdminKpis();
+    renderSupplierAdminTable();
   }
 
   function setupSupplierFilters() {
@@ -1624,12 +1836,12 @@
     if (!status) {
       return;
     }
-    const rows = getRawTransactionsForYear();
-    if (!rows.length) {
+    const rowCount = (state.rawTransactionsByYear?.[getSelectedYear()] || []).length;
+    if (!rowCount) {
       status.textContent = `${getSelectedYearLabel()} 원본 실적 데이터가 아직 입력되지 않았습니다.`;
       return;
     }
-    status.textContent = `${getSelectedYearLabel()} 원본 실적 ${formatNumber(rows.length)}건이 저장되어 있습니다. 거래처 추이, 구매실적, 등급별현황/수입관리에 반영됩니다.`;
+    status.textContent = `${getSelectedYearLabel()} 원본 실적 ${formatNumber(rowCount)}건이 저장되어 있습니다. 거래처 추이, 구매실적, 등급별현황/수입관리에 반영됩니다.`;
   }
 
   function createRawPasteGridRow(row = {}) {
@@ -1644,11 +1856,57 @@
     `;
   }
 
-  function ensureRawPasteEmptyRows() {
-    const body = document.getElementById("rawPasteGridBody");
-    if (!body) {
+  function _getRawPasteAllRows() {
+    return state.rawTransactionsByYear?.[getSelectedYear()] || [];
+  }
+
+  function _getRawPasteTotalPages() {
+    const total = _getRawPasteAllRows().length;
+    if (total === 0) return 1;
+    return Math.ceil(total / RAW_PASTE_PAGE_SIZE);
+  }
+
+  function _renderRawPastePagination() {
+    const container = document.getElementById("rawPastePagination");
+    if (!container) return;
+    const totalRows = _getRawPasteAllRows().length;
+    if (totalRows <= RAW_PASTE_PAGE_SIZE) {
+      container.innerHTML = "";
       return;
     }
+    const totalPages = _getRawPasteTotalPages();
+    const page = state.rawPastePage;
+    const startRow = page * RAW_PASTE_PAGE_SIZE + 1;
+    const endRow = Math.min((page + 1) * RAW_PASTE_PAGE_SIZE, totalRows);
+    let html = `<span class="raw-paste-page-info">${formatNumber(startRow)}~${formatNumber(endRow)} / ${formatNumber(totalRows)}건</span>`;
+    html += `<button class="pagination-btn" data-raw-page="0" ${page === 0 ? "disabled" : ""}>«</button>`;
+    html += `<button class="pagination-btn" data-raw-page="${page - 1}" ${page === 0 ? "disabled" : ""}>‹</button>`;
+    const maxButtons = 5;
+    let start = Math.max(0, page - Math.floor(maxButtons / 2));
+    let end = Math.min(totalPages, start + maxButtons);
+    if (end - start < maxButtons) start = Math.max(0, end - maxButtons);
+    for (let i = start; i < end; i++) {
+      html += `<button class="pagination-btn${i === page ? " active" : ""}" data-raw-page="${i}">${i + 1}</button>`;
+    }
+    html += `<button class="pagination-btn" data-raw-page="${page + 1}" ${page >= totalPages - 1 ? "disabled" : ""}>›</button>`;
+    html += `<button class="pagination-btn" data-raw-page="${totalPages - 1}" ${page >= totalPages - 1 ? "disabled" : ""}>»</button>`;
+    container.innerHTML = html;
+    container.querySelectorAll("[data-raw-page]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        if (btn.disabled) return;
+        state.rawPastePage = Number(btn.dataset.rawPage);
+        syncRawPasteInputForYear();
+      });
+    });
+  }
+
+  function ensureRawPasteEmptyRows() {
+    const allRows = _getRawPasteAllRows();
+    const totalPages = _getRawPasteTotalPages();
+    const isLastPage = state.rawPastePage >= totalPages - 1;
+    if (!isLastPage && allRows.length > 0) return;
+    const body = document.getElementById("rawPasteGridBody");
+    if (!body) return;
     const currentRows = body.querySelectorAll("tr").length;
     const targetRows = Math.max(18, currentRows);
     for (let index = currentRows; index < targetRows; index += 1) {
@@ -1658,20 +1916,21 @@
 
   function syncRawPasteInputForYear() {
     const body = document.getElementById("rawPasteGridBody");
-    if (!body) {
-      return;
-    }
-    const rows = getRawTransactionsForYear();
-    body.innerHTML = rows.map((row) => createRawPasteGridRow(row)).join("");
+    if (!body) return;
+    const allRows = _getRawPasteAllRows();
+    const totalPages = _getRawPasteTotalPages();
+    if (state.rawPastePage >= totalPages) state.rawPastePage = Math.max(0, totalPages - 1);
+    const start = state.rawPastePage * RAW_PASTE_PAGE_SIZE;
+    const pageRows = allRows.slice(start, start + RAW_PASTE_PAGE_SIZE);
+    body.innerHTML = pageRows.map((row) => createRawPasteGridRow(row)).join("");
     ensureRawPasteEmptyRows();
+    _renderRawPastePagination();
     updateRawPasteStatus();
   }
 
   function readRawPasteGrid() {
     const body = document.getElementById("rawPasteGridBody");
-    if (!body) {
-      return [];
-    }
+    if (!body) return [];
     return [...body.querySelectorAll("tr")]
       .map((row) => {
         const cells = Object.fromEntries(
@@ -1752,7 +2011,9 @@
 
   function resetRawPasteInput() {
     delete state.rawTransactionsByYear[getSelectedYear()];
+    _invalidateTxCache();
     saveRawTransactions();
+    state.rawPastePage = 0;
     syncRawPasteInputForYear();
     renderActiveTab(document.querySelector(".tab-content.active")?.id.replace("tab-", "") || "plan");
     window.showToast?.("선택 연도의 원본 실적 데이터를 초기화했습니다.", "success");
@@ -1800,24 +2061,18 @@
         .split(/\r?\n/)
         .map((line) => line.split("\t").map((cell) => normalizeClipboardCell(cell)))
         .filter((cells) => cells.some(Boolean));
-      const body = document.getElementById("rawPasteGridBody");
-      if (!body) {
-        return;
-      }
-      body.innerHTML = rows
-        .map((cells) =>
-          createRawPasteGridRow({
-            date: cells[0] || "",
-            supplier: cells[1] || "",
-            detailedGrade: cells[2] || "",
-            unitPrice: parseClipboardNumber(cells[3] || ""),
-            amount: parseClipboardNumber(cells[4] || "")
-          })
-        )
-        .join("");
-      ensureRawPasteEmptyRows();
-      updateRawPasteStatus();
-      window.showToast?.("엑셀 값을 입력 그리드에 붙여넣었습니다. 필요한 셀은 직접 수정할 수 있습니다.", "success");
+      const parsed = rows.map((cells) => ({
+        date: cells[0] || "",
+        supplier: cells[1] || "",
+        detailedGrade: cells[2] || "",
+        unitPrice: parseClipboardNumber(cells[3] || "") || 0,
+        amount: parseClipboardNumber(cells[4] || "") || 0
+      }));
+      state.rawTransactionsByYear[getSelectedYear()] = parsed;
+      _invalidateTxCache();
+      state.rawPastePage = 0;
+      syncRawPasteInputForYear();
+      window.showToast?.(`엑셀 값 ${formatNumber(parsed.length)}건을 붙여넣었습니다. '원본 데이터 반영' 버튼을 눌러 저장하세요.`, "success");
     });
 
     grid?.addEventListener("focusout", (event) => {
@@ -1925,6 +2180,8 @@
 
     selector.addEventListener("change", (event) => {
       state.selectedYear = event.target.value;
+      _invalidateTxCache();
+      state.rawPastePage = 0;
       syncPlanPasteGridForYear();
       syncRawPasteInputForYear();
       setBanner();
@@ -2066,7 +2323,7 @@
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { position: "top" },
+          legend: { position: "bottom", labels: { padding: 16, usePointStyle: true, pointStyle: "rectRounded" } },
           tooltip: { mode: "index", intersect: false },
           valueLabelPlugin: { enabled: true, format: "number" }
         },
@@ -2597,18 +2854,19 @@
 
     const primaryCategory = [...gradeData.mix].sort((left, right) => right.qty - left.qty)[0];
     const deltaClass = gradeData.deltaShare >= 0 ? "up" : "down";
+    const totalPurchaseQty = gradeData.mix.reduce((sum, row) => sum + row.qty, 0);
 
     document.getElementById("gradeImportKpis").innerHTML = [
       kpiCard(
-        "국고하 + 선반설 비율",
-        `${formatPercent(gradeData.lowTurningRatio, 2)}<small></small>`,
+        "월별 구매량 총합",
+        `${formatNumber(totalPurchaseQty)}<small>톤</small>`,
         `${gradeData.currentYear} raw data 기준`,
         ""
       ),
       kpiCard(
-        "전년도 동일 비율",
-        `${formatPercent(gradeData.compareLowTurningRatio, 2)}<small></small>`,
-        `${gradeData.compareYear} raw data 기준`,
+        "국고하 + 선반설 비율",
+        `${formatPercent(gradeData.lowTurningRatio, 2)}<small></small>`,
+        `${gradeData.currentYear} raw data 기준`,
         "accent"
       ),
       kpiCard(
@@ -2678,7 +2936,7 @@
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { position: "top" }
+            legend: { position: "bottom", labels: { padding: 16, usePointStyle: true, pointStyle: "rectRounded" } }
           },
           scales: {
             y: {
@@ -2704,6 +2962,10 @@
   function renderActiveTab(tabName) {
     if (tabName === "plan") {
       renderPlan();
+      return;
+    }
+    if (tabName === "supplier") {
+      renderSupplierManagement();
       return;
     }
     if (tabName === "gradeImport") {

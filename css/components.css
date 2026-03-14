@@ -1096,6 +1096,22 @@ tr:hover {
   background: #fff;
 }
 
+.table-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.table-action-danger {
+  border-color: rgba(198, 40, 40, 0.24);
+  color: var(--danger);
+}
+
+.table-action-danger:hover {
+  border-color: var(--danger);
+  background: rgba(198, 40, 40, 0.08);
+}
+
 .supplier-admin-table tbody tr:nth-child(even) {
   background: #fff;
 }
@@ -1166,6 +1182,16 @@ tr:hover {
 
 .supplier-admin-performance-fill.low {
   background: #d32f2f;
+}
+
+.raw-paste-pagination {
+  padding: 10px 0 4px;
+}
+
+.raw-paste-page-info {
+  font-size: 12px;
+  color: var(--text-light);
+  margin-right: 8px;
 }
 
 .raw-paste-grid-wrap {
