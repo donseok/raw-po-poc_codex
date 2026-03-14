@@ -3518,7 +3518,7 @@
 
     try {
       const currentActiveTab = document.querySelector(".tab-btn.active")?.dataset.tab || "plan";
-      const dataTabs = ["plan", "gradeImport"];
+      const dataTabs = ["plan", "purchases", "gradeImport"];
 
       for (const tab of dataTabs) {
         const section = document.getElementById(`tab-${tab}`);
@@ -3594,8 +3594,7 @@
       const sectionDefs = [
         { title: "1. 부재료실적 모니터링", builder: buildDocxPlanSection },
         { title: "2. 구매실적", builder: buildDocxPurchasesSection },
-        { title: "3. 공장배분", builder: buildDocxAllocationSection },
-        { title: "4. 등급별현황/수입관리", builder: buildDocxGradeImportSection }
+        { title: "3. 등급별현황/수입관리", builder: buildDocxGradeImportSection }
       ];
 
       const sections = [coverSection];
