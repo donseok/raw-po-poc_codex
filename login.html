@@ -6,6 +6,12 @@
   <title>로그인 - 부재료 실적 모니터링</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="stylesheet" href="css/variables.css">
+  <script>
+    (function() {
+      var t = localStorage.getItem("theme");
+      if (t === "dark") document.documentElement.setAttribute("data-theme", "dark");
+    })();
+  </script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -199,9 +205,83 @@
     @media (max-width: 480px) {
       .login-card { padding: 34px 24px 28px; }
     }
+    [data-theme="dark"] body {
+      background: linear-gradient(135deg, #0a0a1e 0%, #1a1a3e 50%, #2a2a5e 100%);
+    }
+    [data-theme="dark"] .login-card {
+      background: #1e1e33;
+      color: #e8e8f0;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+    }
+    [data-theme="dark"] .login-logo { color: #c5cae9; }
+    [data-theme="dark"] .login-sub { color: #a0a0bb; }
+    [data-theme="dark"] .field label { color: #e8e8f0; }
+    [data-theme="dark"] .field input {
+      border-color: #44446b;
+      background: #252540;
+      color: #e8e8f0;
+    }
+    [data-theme="dark"] .field input:focus {
+      border-color: #5c6bc0;
+      background: #2a2a50;
+      box-shadow: 0 0 0 4px rgba(92, 107, 192, 0.15);
+    }
+    [data-theme="dark"] .login-btn {
+      background: linear-gradient(135deg, #2a2a5e, #3949ab);
+    }
+    [data-theme="dark"] .secondary-btn {
+      border-color: #44446b;
+      background: #252540;
+      color: #c5cae9;
+    }
+    [data-theme="dark"] .credential-hint {
+      background: #252540;
+      color: #a0a0bb;
+    }
+    [data-theme="dark"] .credential-hint strong { color: #c5cae9; }
+    [data-theme="dark"] .error-box {
+      background: rgba(239, 83, 80, 0.12);
+      border-color: rgba(239, 83, 80, 0.3);
+      color: #ef5350;
+    }
+    [data-theme="dark"] .password-toggle { color: #8888a8; }
+    [data-theme="dark"] .password-toggle:hover {
+      background: rgba(92, 107, 192, 0.15);
+      color: #7986cb;
+    }
+    .login-theme-toggle {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      width: 40px;
+      height: 40px;
+      border: none;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.15);
+      color: rgba(255, 255, 255, 0.85);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      transition: background 0.2s, transform 0.2s;
+    }
+    .login-theme-toggle:hover {
+      background: rgba(255, 255, 255, 0.25);
+      transform: scale(1.08);
+    }
+    .login-theme-toggle svg { width: 20px; height: 20px; }
+    .login-theme-toggle .icon-moon { display: block; }
+    .login-theme-toggle .icon-sun { display: none; }
+    [data-theme="dark"] .login-theme-toggle .icon-moon { display: none; }
+    [data-theme="dark"] .login-theme-toggle .icon-sun { display: block; }
   </style>
 </head>
 <body>
+  <button class="login-theme-toggle" id="loginThemeToggle" type="button" aria-label="다크 모드 전환">
+    <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+  </button>
   <div class="login-wrap">
     <div class="login-card">
       <div class="login-header">
@@ -365,6 +445,18 @@
     });
     document.getElementById("password").addEventListener("input", function () {
       errorBox.classList.remove("show");
+    });
+
+    document.getElementById("loginThemeToggle").addEventListener("click", function() {
+      var html = document.documentElement;
+      var isDark = html.getAttribute("data-theme") === "dark";
+      if (isDark) {
+        html.removeAttribute("data-theme");
+        localStorage.setItem("theme", "light");
+      } else {
+        html.setAttribute("data-theme", "dark");
+        localStorage.setItem("theme", "dark");
+      }
     });
   </script>
 </body>

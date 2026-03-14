@@ -154,6 +154,20 @@
     red: "#c62828"
   };
 
+  const gradeColorMap = {
+    "국고상": "#7986cb",
+    "국고중": "#1a237e",
+    "국고하": "#c62828",
+    "선반설": "#42a5f5",
+    "기타": "#90a4ae"
+  };
+
+  function getGradePalette(gradeMix) {
+    return gradeMix.map(function(item) {
+      return gradeColorMap[item.name] || "#bdbdbd";
+    });
+  }
+
   const DEFAULT_GRADE_MAPPINGS = {
     국고상: ["생철A", "생철B", "생철AL", "슈레더B"],
     국고중: ["중량A", "중량AS", "중AL", "중량 ALC(가위)", "중량BS", "모터블럭"],
@@ -2813,13 +2827,13 @@
       "incheonAllocationChart",
       "incheonAllocationChart",
       allocation.incheon.gradeMix,
-      [colors.blue, colors.primaryLight, colors.lightBlue, colors.slate]
+      getGradePalette(allocation.incheon.gradeMix)
     );
     makeAllocationChart(
       "pohangAllocationChart",
       "pohangAllocationChart",
       allocation.pohang.gradeMix,
-      [colors.accent, colors.accentLight, "#f6bf69", "#ffe0b2"]
+      getGradePalette(allocation.pohang.gradeMix)
     );
   }
 
@@ -2894,7 +2908,7 @@
           datasets: [
             {
               data: incheonAllocation.gradeMix.map((item) => item.share),
-              backgroundColor: [colors.blue, colors.primaryLight, colors.lightBlue, "#7d8bcf", "#9ea7dd", "#c0c5eb"],
+              backgroundColor: getGradePalette(incheonAllocation.gradeMix),
               borderColor: "#ffffff",
               borderWidth: 3
             }
