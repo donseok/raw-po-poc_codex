@@ -79,7 +79,7 @@
   }
 
   function normalizeDashboardData(source) {
-    const fixedAvailableYears = Array.from({ length: 7 }, (_, index) => String(2024 + index));
+    const fixedAvailableYears = Array.from({ length: 8 }, (_, index) => String(2023 + index));
     if (source.years && typeof source.years === "object") {
       return {
         ...source,
