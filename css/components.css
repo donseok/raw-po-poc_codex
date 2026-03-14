@@ -417,6 +417,20 @@ tr:hover {
   background: linear-gradient(90deg, #2e7d32, #66bb6a);
 }
 
+.allocation-status-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--primary-dark);
+}
+
+.allocation-status-head strong {
+  font-weight: 800;
+}
+
 .list-grid {
   display: grid;
   gap: 10px;
@@ -1323,8 +1337,38 @@ tr:hover {
 }
 
 .chatbot-fab-icon {
-  font-size: 24px;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.dk-robot-icon {
+  width: 40px;
+  height: 40px;
+}
+
+.chatbot-fab-close {
+  position: absolute;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--white);
+  opacity: 0;
+  transform: rotate(-90deg);
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+}
+
+.chatbot-fab.active .chatbot-fab-icon {
+  opacity: 0;
+  transform: rotate(90deg);
+  pointer-events: none;
+}
+
+.chatbot-fab.active .chatbot-fab-close {
+  opacity: 1;
+  transform: rotate(0deg);
+  pointer-events: auto;
 }
 
 .chatbot-popup {

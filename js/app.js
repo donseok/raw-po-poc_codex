@@ -799,6 +799,36 @@
     return getSectionData("overview");
   }
 
+  function getIncheonAllocationData() {
+    const allocation = getSectionData("allocation");
+    if (!allocation?.incheon) {
+      return null;
+    }
+
+    const detailedToMacro = getDetailedToMacroMap();
+    const grouped = new Map();
+    (allocation.incheon.gradeMix || []).forEach((item) => {
+      const sourceName = String(item.name || "").trim();
+      const macro = detailedToMacro[sourceName] || sourceName || "기타";
+      const current = grouped.get(macro) || { name: macro, qty: 0, share: 0 };
+      current.qty += Number(item.qty) || 0;
+      current.share += Number(item.share) || 0;
+      grouped.set(macro, current);
+    });
+
+    const gradeMix = [...grouped.values()]
+      .map((item) => ({
+        ...item,
+        share: roundNumber(item.share, 2)
+      }))
+      .sort((left, right) => right.qty - left.qty);
+
+    return {
+      ...allocation.incheon,
+      gradeMix
+    };
+  }
+
   function getActivePlanData() {
     return state.planOverrides[getSelectedYear()] || getSectionData("plan");
   }
@@ -2379,6 +2409,7 @@
   function renderGradeImport() {
     const gradeData = getGradeImportData();
     const purchasesData = getPurchasesData();
+    const incheonAllocation = getIncheonAllocationData();
     const importShipmentRows = getImportShipmentRows(getSelectedYear());
     const purchaseDetailHint = document.getElementById("purchaseDetailHint");
     if (purchaseDetailHint) {
@@ -2416,6 +2447,63 @@
         )
         .join("");
       applyTableSort(document.querySelector('table[data-export="purchases"]'));
+    }
+
+    if (!incheonAllocation?.gradeMix?.length) {
+      document.getElementById("incheonAllocationRatePill").innerHTML = `<strong>${getSelectedYearLabel()}</strong> 데이터 없음`;
+      document.getElementById("incheonAllocationRateLabel").textContent = "-";
+      const incheonAllocationProgress = document.getElementById("incheonAllocationProgress");
+      incheonAllocationProgress.style.width = "0%";
+      incheonAllocationProgress.textContent = "";
+      setEmptyChartMessage("gradeRatioChart", `${getSelectedYearLabel()} 인천공장 배분 데이터가 없습니다.`);
+    } else {
+      clearEmptyChartMessage("gradeRatioChart");
+      document.getElementById("incheonAllocationRatePill").innerHTML = `<strong>달성률</strong> ${formatPercent(
+        incheonAllocation.achievementRate,
+        1
+      )}`;
+      document.getElementById("incheonAllocationRateLabel").textContent = formatPercent(
+        incheonAllocation.achievementRate,
+        1
+      );
+      const incheonAllocationProgress = document.getElementById("incheonAllocationProgress");
+      incheonAllocationProgress.style.width = `${Math.min(incheonAllocation.achievementRate, 100)}%`;
+      incheonAllocationProgress.textContent = formatPercent(incheonAllocation.achievementRate, 1);
+
+      makeBarChart("gradeRatioChart", "gradeRatioChart", {
+        type: "doughnut",
+        data: {
+          labels: incheonAllocation.gradeMix.map((item) => item.name),
+          datasets: [
+            {
+              data: incheonAllocation.gradeMix.map((item) => item.share),
+              backgroundColor: [colors.blue, colors.primaryLight, colors.lightBlue, "#7d8bcf", "#9ea7dd", "#c0c5eb"],
+              borderColor: "#ffffff",
+              borderWidth: 3
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: "54%",
+          plugins: {
+            legend: { position: "right" },
+            tooltip: {
+              callbacks: {
+                label: (context) =>
+                  `${context.label}: ${formatNumber(incheonAllocation.gradeMix[context.dataIndex].qty)}톤 (${formatPercent(
+                    context.raw,
+                    1
+                  )})`
+              }
+            },
+            valueLabelPlugin: {
+              enabled: false
+            }
+          }
+        }
+      });
     }
 
     if (!gradeData?.comparisonTable?.length) {
@@ -2498,7 +2586,6 @@
           }
         });
       }
-      setEmptyChartMessage("gradeRatioChart", `${getSelectedYearLabel()} 집중 등급 비율 데이터가 없습니다.`);
       return;
     }
 
@@ -2507,7 +2594,6 @@
     } else {
       clearEmptyChartMessage("gradeMixChart");
     }
-    clearEmptyChartMessage("gradeRatioChart");
 
     const primaryCategory = [...gradeData.mix].sort((left, right) => right.qty - left.qty)[0];
     const deltaClass = gradeData.deltaShare >= 0 ? "up" : "down";
@@ -2613,44 +2699,6 @@
       });
     }
 
-    makeBarChart("gradeRatioChart", "gradeRatioChart", {
-      type: "line",
-      data: {
-        labels: gradeData.monthlyFocusedRatio.map((row) => row.month),
-        datasets: [
-          {
-            label: `${gradeData.currentYear} 비율`,
-            data: gradeData.monthlyFocusedRatio.map((row) => row.ratio),
-            borderColor: colors.primary,
-            backgroundColor: "rgba(26, 35, 126, 0.15)",
-            pointRadius: 4,
-            tension: 0.25
-          },
-          {
-            label: `${gradeData.compareYear} 비율`,
-            data: gradeData.compareMonthlyFocusedRatio.map((row) => row.ratio),
-            borderColor: colors.accent,
-            backgroundColor: "rgba(255, 143, 0, 0.15)",
-            pointRadius: 4,
-            tension: 0.25
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { position: "top" }
-        },
-        scales: {
-          y: {
-            ticks: {
-              callback: (value) => `${value}%`
-            }
-          }
-        }
-      }
-    });
   }
 
   function renderActiveTab(tabName) {
@@ -2949,7 +2997,7 @@
     children.push(docxChartImage(images.gradeMixChart, "등급 비중 차트", 560, 280));
 
     children.push(docxSubHeading("집중 등급 비율 추이"));
-    children.push(docxChartImage(images.gradeRatioChart, "집중 등급 비율 차트", 560, 280));
+    children.push(docxChartImage(images.gradeRatioChart, "인천공장 배분 현황 차트", 560, 280));
 
     return children;
   }
@@ -3082,6 +3130,12 @@
       });
     });
 
+    document.querySelector(".logo")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      setActiveTab("plan");
+      renderActiveTab("plan");
+    });
+
     document.getElementById("exportBtn").addEventListener("click", () => exportDocx());
     document.getElementById("logoutBtn").addEventListener("click", () => {
       sessionStorage.removeItem("loggedInUser");
@@ -3091,205 +3145,589 @@
 
   /* ── 챗봇 (floating popup) ── */
 
-  function parseChatQuery(text) {
-    const query = { months: [], keywords: [], range: null };
-    const monthMatch = text.match(/(\d{1,2})\s*월/g);
-    if (monthMatch) {
-      monthMatch.forEach(function (m) {
-        const num = parseInt(m, 10);
-        if (num >= 1 && num <= 12) { query.months.push(num - 1); }
-      });
-    }
-    if (/상반기/.test(text)) { query.range = "상반기"; }
-    if (/하반기/.test(text)) { query.range = "하반기"; }
-    if (/전체|올해|연간|연도|합계/.test(text)) { query.range = "전체"; }
-
-    const kwMap = [
-      [/계획/, "계획"], [/실적/, "실적"], [/달성률|달성율/, "달성률"],
-      [/누계|누적/, "누계"], [/거래처|공급/, "거래처"], [/등급|비중|비율/, "등급"],
-      [/구매|입고/, "구매"], [/납품/, "납품"], [/단가/, "단가"], [/금액/, "금액"],
-      [/배분|공장|인천|포항/, "배분"], [/수입|선적|운송|도착/, "수입"],
-      [/목표|연간/, "목표"], [/최대|최고|최소|최저/, "비교"]
-    ];
-    kwMap.forEach(function (pair) {
-      if (pair[0].test(text)) { query.keywords.push(pair[1]); }
-    });
-    return query;
+  function normalizeVerifiedChatText(text) {
+    return String(text || "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
-  function chatHas(kw, key) { return kw.indexOf(key) !== -1; }
+  function parseVerifiedChatQuery(text) {
+    const normalized = normalizeVerifiedChatText(text);
 
-  function generateChatResponse(text) {
-    const query = parseChatQuery(text);
-    const year = getSelectedYear();
-    const yearLabel = year + "년";
-    const kw = query.keywords;
-
-    // ── 공장 배분 ──
-    if (chatHas(kw, "배분")) {
-      const alloc = getSectionData("allocation");
-      if (!alloc || !alloc.monthly || !alloc.monthly.length) {
-        return yearLabel + " 공장배분 데이터가 없습니다.";
+    // ── 월 파싱 (범위/복수/단일) ──
+    const months = [];
+    var rangeMatch = normalized.match(/(\d{1,2})\s*[~\-]\s*(\d{1,2})\s*월/);
+    if (rangeMatch) {
+      for (var m = Number(rangeMatch[1]); m <= Math.min(Number(rangeMatch[2]), 12); m++) {
+        if (m >= 1 && !months.includes(m - 1)) months.push(m - 1);
       }
-      if (query.months.length) {
-        const mi = query.months[0];
-        if (mi < alloc.monthly.length) {
-          const am = alloc.monthly[mi];
-          return (mi + 1) + "월 공장 배분:\n" +
-            "인천 - 계획: " + formatNumber(am.incheonPlan) + "톤, 실적: " + formatNumber(am.incheonActual) + "톤 (달성률 " + formatPercent(am.incheonRate, 1) + ")\n" +
-            "포항 - 계획: " + formatNumber(am.pohangPlan) + "톤, 실적: " + formatNumber(am.pohangActual) + "톤 (달성률 " + formatPercent(am.pohangRate, 1) + ")";
+    }
+    if (!months.length) {
+      var fromToMatch = normalized.match(/(\d{1,2})\s*월\s*(?:부터|에서)\s*(\d{1,2})\s*월/);
+      if (fromToMatch) {
+        for (var m2 = Number(fromToMatch[1]); m2 <= Math.min(Number(fromToMatch[2]), 12); m2++) {
+          if (m2 >= 1 && !months.includes(m2 - 1)) months.push(m2 - 1);
         }
       }
-      return yearLabel + " 공장 배분 현황:\n" +
-        "인천 - 계획: " + formatNumber(alloc.incheon.planTotal) + "톤, 실적: " + formatNumber(alloc.incheon.actualTotal) + "톤, 달성률: " + formatPercent(alloc.incheon.achievementRate, 1) + "\n" +
-        "포항 - 계획: " + formatNumber(alloc.pohang.planTotal) + "톤, 실적: " + formatNumber(alloc.pohang.actualTotal) + "톤, 달성률: " + formatPercent(alloc.pohang.achievementRate, 1);
+    }
+    if (!months.length) {
+      var monthMatches = normalized.matchAll(/(\d{1,2})\s*월/g);
+      for (var mm of monthMatches) {
+        var month = Number(mm[1]);
+        if (month >= 1 && month <= 12 && !months.includes(month - 1)) months.push(month - 1);
+      }
     }
 
-    // ── 수입/선적 현황 ──
-    if (chatHas(kw, "수입")) {
-      const shipments = getImportShipmentRows(year);
-      if (!shipments || !shipments.length) {
-        return yearLabel + " 수입 선적 데이터가 없습니다.";
-      }
-      const totalQty = shipments.reduce(function (s, r) { return s + r.qty; }, 0);
-      const statusCounts = {};
-      shipments.forEach(function (r) { statusCounts[r.status] = (statusCounts[r.status] || 0) + 1; });
-      const statusText = Object.entries(statusCounts).map(function (e) { return e[0] + " " + e[1] + "건"; }).join(", ");
-      return yearLabel + " 수입 현황:\n총 " + shipments.length + "건, 합계 수량: " + formatNumber(totalQty) + "톤\n상태별: " + statusText;
-    }
+    // ── 범위 파싱 (분기 개별 지원) ──
+    var range = null;
+    if (/1\s*분기/.test(normalized)) range = "1분기";
+    else if (/2\s*분기/.test(normalized)) range = "2분기";
+    else if (/3\s*분기/.test(normalized)) range = "3분기";
+    else if (/4\s*분기/.test(normalized)) range = "4분기";
+    else if (/상반기/.test(normalized)) range = "상반기";
+    else if (/하반기/.test(normalized)) range = "하반기";
+    else if (/전체|연간|연도|올해|합계|총계/.test(normalized)) range = "전체";
 
-    // ── 등급 비중 ──
-    if (chatHas(kw, "등급")) {
-      const gradeData = getGradeImportData();
-      if (!gradeData || !gradeData.comparisonTable || !gradeData.comparisonTable.length) {
-        return yearLabel + " 등급 데이터가 없습니다.";
+    // ── 의도 플래그 ──
+    var flags = {
+      plan: /(계획|목표|수급)/.test(normalized),
+      actual: /(실적|달성)/.test(normalized),
+      cumulative: /(누계|누적|달성률|달성율)/.test(normalized),
+      supplier: /(거래처|납품|공급사|공급처|업체)/.test(normalized),
+      purchase: /(구매|매입|입고금액|입고량|단가|금액)/.test(normalized),
+      grade: /(등급|비중|비율|국고상|국고중|국고하|선반설|국고 상|국고 중|국고 하)/.test(normalized),
+      importing: /(수입|선적|도착|운송|계약번호|cfr|imp-)/.test(normalized),
+      allocation: /(배분|공장)/.test(normalized),
+      compare: /(비교|최대|최고|최소|최저|전년|전년대비|증감)/.test(normalized),
+      overview: /(현황|요약|정리|종합|개요|대시보드)/.test(normalized),
+      trend: /(추이|추세|변화|트렌드)/.test(normalized)
+    };
+
+    // ── 거래처명 검색 ──
+    var supplierName = null;
+    var suppliersTable = getSectionData("suppliers")?.table || [];
+    for (var si = 0; si < suppliersTable.length; si++) {
+      if (normalized.includes(suppliersTable[si].supplier.toLowerCase())) {
+        supplierName = suppliersTable[si].supplier;
+        flags.supplier = true;
+        break;
       }
-      const lines = gradeData.comparisonTable.map(function (row) {
-        return row.category + ": " + formatPercent(row.currentShare, 2) + " (입고량 " + formatNumber(row.currentQty) + ")";
-      });
-      let result = yearLabel + " 등급별 비중:\n" + lines.join("\n");
-      if (gradeData.lowTurningRatio != null) {
-        result += "\n\n국고하+선반설 비율: " + formatPercent(gradeData.lowTurningRatio, 2);
-        if (gradeData.compareLowTurningRatio != null) {
-          result += " (전년 " + formatPercent(gradeData.compareLowTurningRatio, 2) + ", 증감 " + formatNumber(gradeData.deltaShare, 2) + "%p)";
+    }
+    if (!supplierName) {
+      for (var sj = 0; sj < state.supplierAdminItems.length; sj++) {
+        if (normalized.includes(state.supplierAdminItems[sj].name.toLowerCase())) {
+          supplierName = state.supplierAdminItems[sj].name;
+          flags.supplier = true;
+          break;
         }
       }
-      return result;
     }
 
-    // ── 거래처 현황 ──
-    if (chatHas(kw, "거래처") || chatHas(kw, "납품")) {
-      const suppliers = state.supplierAdminItems;
-      if (!suppliers.length) {
-        return "등록된 거래처가 없습니다.";
-      }
-      const totalSupply = suppliers.reduce(function (s, item) { return s + item.yearlySupply; }, 0);
-      const avgPerf = suppliers.reduce(function (s, item) { return s + item.performanceRate; }, 0) / suppliers.length;
-      const topSupplier = suppliers.slice().sort(function (a, b) { return b.yearlySupply - a.yearlySupply; })[0];
-      return "거래처 현황:\n등록 거래처: " + suppliers.length + "개사\n금년 총 납품량: " + formatNumber(totalSupply) + "톤\n평균 납품실적: " + formatPercent(avgPerf, 1) +
-        "\n최대 납품 거래처: " + topSupplier.name + " (" + formatNumber(topSupplier.yearlySupply) + "톤, " + topSupplier.trustGrade + "등급)";
+    // ── 공장 특정 ──
+    var factory = null;
+    if (/인천/.test(normalized)) { factory = "인천"; flags.allocation = true; }
+    if (/포항/.test(normalized)) { factory = "포항"; flags.allocation = true; }
+
+    return { normalized, months, range, flags, supplierName, factory };
+  }
+
+  function chatRangeMonths(query) {
+    if (query.months.length) return query.months;
+    switch (query.range) {
+      case "1분기": return [0, 1, 2];
+      case "2분기": return [3, 4, 5];
+      case "상반기": return [0, 1, 2, 3, 4, 5];
+      case "3분기": return [6, 7, 8];
+      case "4분기": return [9, 10, 11];
+      case "하반기": return [6, 7, 8, 9, 10, 11];
+      case "전체": return null;
+      default: return null;
+    }
+  }
+
+  function chatRangeLabel(query) {
+    if (query.months.length === 1) return (query.months[0] + 1) + "월";
+    if (query.months.length > 1) return (query.months[0] + 1) + "~" + (query.months[query.months.length - 1] + 1) + "월";
+    if (query.range) return query.range;
+    return "연간";
+  }
+
+  function getVerifiedChatIntentOrder(query) {
+    var scores = { plan: 0, purchase: 0, grade: 0, import: 0, supplier: 0, allocation: 0, overview: 0 };
+
+    if (query.flags.plan || query.flags.actual || query.flags.cumulative) scores.plan += 4;
+    if (query.flags.purchase) scores.purchase += 5;
+    if (query.flags.grade) scores.grade += 5;
+    if (query.flags.importing) scores.import += 5;
+    if (query.flags.supplier) scores.supplier += 5;
+    if (query.flags.allocation) scores.allocation += 5;
+    if (query.flags.overview) scores.overview += 2;
+    if (query.months.length || query.range) { scores.plan += 2; scores.purchase += 1; scores.allocation += 1; }
+    if (query.supplierName) scores.supplier += 3;
+    if (query.flags.compare) { scores.plan += 1; scores.purchase += 1; scores.grade += 1; }
+    if (query.flags.trend) { scores.purchase += 2; scores.plan += 1; }
+    if (query.factory) scores.allocation += 2;
+
+    // "현황" 키워드가 다른 구체적 키워드와 동시에 나오면 overview 점수 낮춤
+    if (query.flags.overview) {
+      var specificFlags = [query.flags.plan, query.flags.actual, query.flags.purchase, query.flags.grade,
+        query.flags.importing, query.flags.supplier, query.flags.allocation];
+      if (specificFlags.some(Boolean)) scores.overview = 0;
     }
 
-    // ── 구매 관련 ──
-    if (chatHas(kw, "구매") || chatHas(kw, "금액") || chatHas(kw, "단가")) {
-      const purchData = getPurchasesData();
-      if (!purchData || !purchData.monthly || !purchData.monthly.length) {
-        return yearLabel + " 구매실적 데이터가 없습니다.";
-      }
-      if (query.months.length) {
-        const pmi = query.months[0];
-        if (pmi < purchData.monthly.length) {
-          const pm = purchData.monthly[pmi];
-          return (pmi + 1) + "월 구매실적:\n입고량: " + formatNumber(pm.qty) + "\n입고금액: " + formatCompact(pm.amount) + "\n평균단가: " + formatNumber(pm.avgUnitPrice, 1) + "\n거래처 수: " + pm.supplierCount + "곳";
-        }
-      }
-      if (chatHas(kw, "비교")) {
-        const pMonthly = purchData.monthly;
-        const peakM = pMonthly.slice().sort(function (a, b) { return b.qty - a.qty; })[0];
-        const lowM = pMonthly.slice().sort(function (a, b) { return a.qty - b.qty; })[0];
-        return yearLabel + " 구매 비교:\n최대 구매월: " + peakM.month + " (" + formatNumber(peakM.qty) + ")\n최소 구매월: " + lowM.month + " (" + formatNumber(lowM.qty) + ")";
-      }
-      return yearLabel + " 구매실적 누계:\n입고량: " + purchData.totalQtyDisplay + "\n입고금액: " + purchData.totalAmountDisplay + "\n평균 매입 단가: " + purchData.avgUnitPriceDisplay;
+    // 아무 플래그도 없고 월/범위도 없으면 overview
+    if (!Object.values(query.flags).some(Boolean) && !query.months.length && !query.range) {
+      scores.overview = 5;
+    }
+    // 키워드 없이 월만 있으면 plan 우선
+    if (query.months.length && !Object.values(query.flags).some(Boolean)) {
+      scores.plan = 5;
     }
 
-    // ── 계획/실적/달성률/누계/목표 ──
-    const planData = getActivePlanData();
-    if (!planData || !planData.monthly || !planData.monthly.length) {
-      if (kw.length === 0 && query.months.length === 0 && !query.range) {
-        return "죄송합니다. 질문을 이해하지 못했습니다.\n아래와 같은 질문을 해보세요:\n- \"7월 계획과 실적은?\"\n- \"누계 달성률 알려줘\"\n- \"거래처 현황\"\n- \"등급별 비중\"\n- \"구매 금액\"\n- \"공장 배분 현황\"\n- \"수입 현황\"";
-      }
-      return yearLabel + " 수급계획 데이터가 없습니다.";
-    }
-    const monthly = planData.monthly;
+    return Object.entries(scores)
+      .sort(function (left, right) { return right[1] - left[1]; })
+      .map(function (item) { return item[0]; });
+  }
 
-    // 연간 목표
-    if (chatHas(kw, "목표") && !query.months.length) {
-      const annualTarget = monthly.reduce(function (s, r) { return s + r.plan; }, 0);
-      const cumActual = monthly[monthly.length - 1].cumulativeActual;
-      const attRate = monthly[monthly.length - 1].achievementRate;
-      return yearLabel + " 연간 목표: " + formatNumber(annualTarget) + "톤\n누계 실적: " + formatNumber(cumActual) + "톤\n달성률: " + formatPercent(attRate, 1);
+  function buildVerifiedOverviewAnswer(query, yearLabel) {
+    var overview = getSectionData("overview") || getYearOverview();
+    var planData = getActivePlanData();
+    var purchData = getPurchasesData();
+    var lines = [yearLabel + " 종합 현황"];
+
+    if (overview) {
+      lines.push("연간 목표: " + (overview.annualTargetDisplay || formatNumber(overview.annualTarget)) + "톤");
+      lines.push("누계 실적: " + (overview.cumulativeActualDisplay || formatNumber(overview.cumulativeActual)) + "톤");
+      lines.push("달성률: " + (overview.attainmentRateDisplay || formatPercent(overview.attainmentRate, 1)));
+    } else if (planData?.monthly?.length) {
+      var monthly = planData.monthly;
+      var totalPlan = monthly.reduce(function (s, r) { return s + r.plan; }, 0);
+      var last = monthly[monthly.length - 1];
+      lines.push("연간 계획: " + formatNumber(totalPlan) + "톤");
+      lines.push("누계 실적: " + formatNumber(last.cumulativeActual) + "톤");
+      lines.push("달성률: " + formatPercent(last.achievementRate, 1));
+    }
+
+    if (purchData?.totalQtyDisplay) {
+      lines.push("");
+      lines.push("[구매실적]");
+      lines.push("입고량: " + purchData.totalQtyDisplay);
+      lines.push("입고금액: " + purchData.totalAmountDisplay);
+      lines.push("평균 단가: " + purchData.avgUnitPriceDisplay);
+    }
+
+    var allocation = getSectionData("allocation");
+    if (allocation?.incheon && allocation?.pohang) {
+      lines.push("");
+      lines.push("[공장 배분]");
+      lines.push("인천: " + formatNumber(allocation.incheon.actualTotal) + "톤 (달성률 " + formatPercent(allocation.incheon.achievementRate, 1) + ")");
+      lines.push("포항: " + formatNumber(allocation.pohang.actualTotal) + "톤 (달성률 " + formatPercent(allocation.pohang.achievementRate, 1) + ")");
+    }
+
+    return lines.join("\n");
+  }
+
+  function buildVerifiedPlanAnswer(query, yearLabel) {
+    var planData = getActivePlanData();
+    if (!planData?.monthly?.length) {
+      return yearLabel + " 계획/실적 데이터가 없습니다.";
+    }
+    var monthly = planData.monthly;
+
+    // 단일 월
+    if (query.months.length === 1) {
+      var idx = query.months[0];
+      var row = monthly[idx];
+      if (!row) return (idx + 1) + "월 데이터가 없습니다.";
+      var gap = row.actual - row.plan;
+      var monthRate = row.plan ? roundNumber((row.actual / row.plan) * 100, 1) : 0;
+      return row.month + " 계획/실적\n" +
+        "계획: " + formatNumber(row.plan) + "톤\n" +
+        "실적: " + formatNumber(row.actual) + "톤\n" +
+        "차이: " + (gap >= 0 ? "+" : "") + formatNumber(gap) + "톤\n" +
+        "월별 달성률: " + formatPercent(monthRate, 1) + "\n" +
+        "누계 달성률: " + formatPercent(row.achievementRate, 1);
+    }
+
+    // 복수 월 / 범위
+    var rm = chatRangeMonths(query);
+    if (rm && rm.length > 1) {
+      var rows = rm.map(function (mi) { return monthly[mi]; }).filter(Boolean);
+      if (!rows.length) return chatRangeLabel(query) + " 데이터가 없습니다.";
+      var sumPlan = rows.reduce(function (s, r) { return s + r.plan; }, 0);
+      var sumActual = rows.reduce(function (s, r) { return s + r.actual; }, 0);
+      var rangeGap = sumActual - sumPlan;
+      var label = chatRangeLabel(query);
+      var detail = yearLabel + " " + label + " 계획/실적\n" +
+        "계획 합계: " + formatNumber(sumPlan) + "톤\n" +
+        "실적 합계: " + formatNumber(sumActual) + "톤\n" +
+        "차이: " + (rangeGap >= 0 ? "+" : "") + formatNumber(rangeGap) + "톤\n" +
+        "달성률: " + formatPercent(percent(sumActual, sumPlan), 1);
+      if (rows.length <= 6) {
+        detail += "\n\n[월별 상세]";
+        rows.forEach(function (r) {
+          var mr = r.plan ? roundNumber((r.actual / r.plan) * 100, 1) : 0;
+          detail += "\n" + r.month + ": 계획 " + formatNumber(r.plan) + " / 실적 " + formatNumber(r.actual) + " (" + formatPercent(mr, 1) + ")";
+        });
+      }
+      return detail;
+    }
+
+    // 비교 (최대/최소)
+    if (query.flags.compare) {
+      var best = monthly.slice().sort(function (a, b) { return b.actual - a.actual; })[0];
+      var worst = monthly.slice().sort(function (a, b) { return a.actual - b.actual; })[0];
+      var bestRate = best.plan ? roundNumber((best.actual / best.plan) * 100, 1) : 0;
+      var worstRate = worst.plan ? roundNumber((worst.actual / worst.plan) * 100, 1) : 0;
+      return yearLabel + " 실적 비교\n" +
+        "최대: " + best.month + " " + formatNumber(best.actual) + "톤 (달성률 " + formatPercent(bestRate, 1) + ")\n" +
+        "최소: " + worst.month + " " + formatNumber(worst.actual) + "톤 (달성률 " + formatPercent(worstRate, 1) + ")";
     }
 
     // 누계 달성률
-    if (chatHas(kw, "누계") || chatHas(kw, "달성률")) {
-      if (query.months.length) {
-        const mIdx = query.months[0];
-        if (mIdx < monthly.length) {
-          const mr = monthly[mIdx];
-          return "1~" + (mIdx + 1) + "월 누계 달성률: " + formatPercent(mr.achievementRate, 1) + "\n누계 계획: " + formatNumber(mr.cumulativePlan) + "톤\n누계 실적: " + formatNumber(mr.cumulativeActual) + "톤";
+    if (query.flags.cumulative) {
+      var lastRow = monthly[monthly.length - 1];
+      return yearLabel + " 누계 현황\n" +
+        "누계 계획: " + formatNumber(lastRow.cumulativePlan) + "톤\n" +
+        "누계 실적: " + formatNumber(lastRow.cumulativeActual) + "톤\n" +
+        "누계 달성률: " + formatPercent(lastRow.achievementRate, 1);
+    }
+
+    // 기본: 연간 전체
+    var tPlan = monthly.reduce(function (s, r) { return s + r.plan; }, 0);
+    var tActual = monthly.reduce(function (s, r) { return s + r.actual; }, 0);
+    var lastM = monthly[monthly.length - 1];
+    return yearLabel + " 계획/실적 전체\n" +
+      "연간 계획: " + formatNumber(tPlan) + "톤\n" +
+      "연간 실적: " + formatNumber(tActual) + "톤\n" +
+      "달성률: " + formatPercent(lastM.achievementRate, 1);
+  }
+
+  function buildVerifiedPurchaseAnswer(query, yearLabel) {
+    var purchases = getPurchasesData();
+    if (!purchases?.monthly?.length) {
+      return yearLabel + " 구매실적 데이터가 없습니다.";
+    }
+
+    // 단일 월
+    if (query.months.length === 1) {
+      var row = purchases.monthly[query.months[0]];
+      if (!row) return (query.months[0] + 1) + "월 구매 데이터가 없습니다.";
+      return row.month + " 구매실적\n" +
+        "입고량: " + formatNumber(row.qty) + "톤\n" +
+        "입고금액: " + formatCompact(row.amount) + "\n" +
+        "평균 단가: " + formatNumber(row.avgUnitPrice, 1) + "\n" +
+        "거래처 수: " + row.supplierCount + "곳";
+    }
+
+    // 복수 월 / 범위 (상반기, 분기 등)
+    var rm = chatRangeMonths(query);
+    if (rm && rm.length > 0 && (query.range || query.months.length > 1)) {
+      var rows = rm.map(function (mi) { return purchases.monthly[mi]; }).filter(Boolean);
+      if (!rows.length) return chatRangeLabel(query) + " 구매 데이터가 없습니다.";
+      var sumQty = rows.reduce(function (s, r) { return s + r.qty; }, 0);
+      var sumAmt = rows.reduce(function (s, r) { return s + r.amount; }, 0);
+      var avgPrice = sumQty ? roundNumber(sumAmt / sumQty, 1) : 0;
+      var label = chatRangeLabel(query);
+      var detail = yearLabel + " " + label + " 구매실적\n" +
+        "입고량: " + formatCompact(sumQty) + "\n" +
+        "입고금액: " + formatCompact(sumAmt) + "\n" +
+        "평균 단가: " + formatNumber(avgPrice, 1);
+      if (rows.length <= 6) {
+        detail += "\n\n[월별 상세]";
+        rows.forEach(function (r) {
+          detail += "\n" + r.month + ": " + formatCompact(r.qty) + " / " + formatCompact(r.amount) + " (단가 " + formatNumber(r.avgUnitPrice, 1) + ")";
+        });
+      }
+      return detail;
+    }
+
+    // 비교
+    if (query.flags.compare) {
+      var peak = purchases.monthly.slice().sort(function (a, b) { return b.qty - a.qty; })[0];
+      var low = purchases.monthly.slice().sort(function (a, b) { return a.qty - b.qty; })[0];
+      return yearLabel + " 구매 비교\n" +
+        "최대 입고: " + peak.month + " (" + formatCompact(peak.qty) + ", 단가 " + formatNumber(peak.avgUnitPrice, 1) + ")\n" +
+        "최소 입고: " + low.month + " (" + formatCompact(low.qty) + ", 단가 " + formatNumber(low.avgUnitPrice, 1) + ")";
+    }
+
+    // 추이
+    if (query.flags.trend) {
+      var trendDetail = yearLabel + " 월별 구매 추이";
+      purchases.monthly.forEach(function (r) {
+        trendDetail += "\n" + r.month + ": " + formatCompact(r.qty) + " (단가 " + formatNumber(r.avgUnitPrice, 1) + ")";
+      });
+      return trendDetail;
+    }
+
+    // 기본: 누계
+    return yearLabel + " 구매실적 누계\n" +
+      "입고량: " + purchases.totalQtyDisplay + "\n" +
+      "입고금액: " + purchases.totalAmountDisplay + "\n" +
+      "평균 매입 단가: " + purchases.avgUnitPriceDisplay;
+  }
+
+  function buildVerifiedGradeAnswer(query, yearLabel) {
+    var gradeData = getGradeImportData();
+    if (!gradeData?.comparisonTable?.length) {
+      var incheonAllocation = getIncheonAllocationData();
+      if (incheonAllocation?.gradeMix?.length) {
+        return yearLabel + " 인천공장 등급 구성\n" +
+          incheonAllocation.gradeMix.map(function (row) {
+            return row.name + ": " + formatNumber(row.qty) + "톤 (" + formatPercent(row.share, 1) + ")";
+          }).join("\n");
+      }
+      return yearLabel + " 등급 데이터가 없습니다.";
+    }
+
+    var result = yearLabel + " 등급별 비중";
+    gradeData.comparisonTable.forEach(function (row) {
+      var line = "\n" + row.category + ": " + formatPercent(row.currentShare, 2) +
+        " (" + formatNumber(row.currentQty) + "톤)";
+      if (row.compareShare != null && row.compareShare > 0) {
+        var diff = roundNumber(row.currentShare - row.compareShare, 2);
+        line += " [전년 " + formatPercent(row.compareShare, 2) + ", " +
+          (diff >= 0 ? "+" : "") + formatNumber(diff, 2) + "%p]";
+      }
+      result += line;
+    });
+
+    if (gradeData.lowTurningRatio != null) {
+      result += "\n\n국고하+선반설 비율: " + formatPercent(gradeData.lowTurningRatio, 2);
+      if (gradeData.compareLowTurningRatio != null) {
+        result += " (전년 " + formatPercent(gradeData.compareLowTurningRatio, 2);
+        if (gradeData.deltaShare != null) {
+          result += ", " + (gradeData.deltaShare >= 0 ? "+" : "") + formatNumber(gradeData.deltaShare, 2) + "%p";
         }
+        result += ")";
       }
-      const last = monthly[monthly.length - 1];
-      return "1~" + monthly.length + "월 누계 달성률: " + formatPercent(last.achievementRate, 1) + "\n누계 계획: " + formatNumber(last.cumulativePlan) + "톤\n누계 실적: " + formatNumber(last.cumulativeActual) + "톤";
+    }
+    return result;
+  }
+
+  function buildVerifiedImportAnswer(query, yearLabel) {
+    var shipments = getImportShipmentRows(getSelectedYear());
+    if (!shipments.length) {
+      return yearLabel + " 수입 현황 데이터가 없습니다.";
     }
 
-    // 최대/최소 비교 (계획/실적 맥락)
-    if (chatHas(kw, "비교")) {
-      const bestM = monthly.slice().sort(function (a, b) { return b.actual - a.actual; })[0];
-      const worstM = monthly.slice().sort(function (a, b) { return a.actual - b.actual; })[0];
-      return yearLabel + " 실적 비교:\n최대 실적월: " + bestM.month + " (" + formatNumber(bestM.actual) + "톤)\n최소 실적월: " + worstM.month + " (" + formatNumber(worstM.actual) + "톤)";
-    }
-
-    // 특정 월 계획/실적
+    // 월 필터
+    var filtered = shipments;
     if (query.months.length) {
-      const idx = query.months[0];
-      if (idx < monthly.length) {
-        const row = monthly[idx];
-        const gap = row.actual - row.plan;
-        const gapText = gap >= 0 ? "+" + formatNumber(gap) : formatNumber(gap);
-        return (idx + 1) + "월 계획: " + formatNumber(row.plan) + "톤\n실적: " + formatNumber(row.actual) + "톤\n차이: " + gapText + "톤\n누계 달성률: " + formatPercent(row.achievementRate, 1);
+      filtered = shipments.filter(function (r) {
+        var shipMonth = new Date(r.shipDate).getMonth();
+        return query.months.includes(shipMonth);
+      });
+      if (!filtered.length) return chatRangeLabel(query) + " 수입 데이터가 없습니다.";
+    }
+
+    var totalQty = filtered.reduce(function (sum, r) { return sum + r.qty; }, 0);
+    var avgCfr = roundNumber(filtered.reduce(function (sum, r) { return sum + r.cfr; }, 0) / filtered.length, 1);
+    var statusCounts = {};
+    filtered.forEach(function (r) { statusCounts[r.status] = (statusCounts[r.status] || 0) + 1; });
+    var statusText = Object.entries(statusCounts).map(function (e) { return e[0] + " " + e[1] + "건"; }).join(", ");
+
+    var headerLabel = query.months.length ? chatRangeLabel(query) : yearLabel;
+    var result = headerLabel + " 수입 현황\n" +
+      "건수: " + filtered.length + "건\n" +
+      "수입량: " + formatNumber(totalQty) + "톤\n" +
+      "평균 CFR: $" + formatNumber(avgCfr, 1) + "\n" +
+      "상태별: " + statusText;
+
+    // 상세 목록 (10건 이하)
+    if (filtered.length <= 10) {
+      result += "\n\n[상세 내역]";
+      filtered.forEach(function (r) {
+        result += "\n" + r.contractNo + " | " + r.country + " " + r.supplier +
+          " | " + r.grade + " " + formatNumber(r.qty) + "톤 | CFR $" + r.cfr + " | " + r.status;
+      });
+    }
+    return result;
+  }
+
+  function buildVerifiedSupplierAnswer(query, yearLabel) {
+    // 특정 거래처명 검색
+    if (query.supplierName) {
+      var suppliersTable = getSectionData("suppliers")?.table || [];
+      var found = suppliersTable.find(function (s) { return s.supplier === query.supplierName; });
+      if (found) {
+        var result = query.supplierName + " 거래처 현황\n" +
+          "연간 입고량: " + formatCompact(found.totalQty) + "\n" +
+          "연간 입고금액: " + formatCompact(found.totalAmount) + "\n" +
+          "평균 단가: " + formatNumber(found.avgUnitPrice, 1) + "\n" +
+          "점유율: " + formatPercent(found.share, 1) + "\n" +
+          "납품 성과율: " + formatPercent(found.performanceRate, 1) + "\n" +
+          "신뢰등급: " + found.trustGrade + "\n" +
+          "주력 등급: " + (found.dominantMacro || "-");
+        if (found.monthlySeries?.length) {
+          result += "\n\n[월별 입고량]";
+          found.monthlySeries.forEach(function (qty, i) {
+            result += "\n" + (i + 1) + "월: " + formatCompact(qty);
+          });
+        }
+        return result;
+      }
+      var adminFound = state.supplierAdminItems.find(function (s) { return s.name === query.supplierName; });
+      if (adminFound) {
+        return query.supplierName + " 거래처 정보\n" +
+          "지역: " + adminFound.region + "\n" +
+          "월 처리능력: " + formatNumber(adminFound.monthlyCapacity) + "톤\n" +
+          "연간 납품량: " + formatNumber(adminFound.yearlySupply) + "톤\n" +
+          "신뢰등급: " + adminFound.trustGrade + "\n" +
+          "납품 성과율: " + formatPercent(adminFound.performanceRate, 1);
+      }
+      return "'" + query.supplierName + "' 거래처 정보를 찾을 수 없습니다.";
+    }
+
+    // 전체 거래처 현황 - 대시보드 거래처 테이블 우선
+    var allSuppliers = getSectionData("suppliers")?.table || [];
+    if (allSuppliers.length) {
+      var totalQty = allSuppliers.reduce(function (s, r) { return s + r.totalQty; }, 0);
+      var res = yearLabel + " 거래처별 실적\n" +
+        "거래처 수: " + allSuppliers.length + "개사\n" +
+        "총 입고량: " + formatCompact(totalQty);
+      allSuppliers.forEach(function (s) {
+        res += "\n\n" + s.supplier + ": " + formatCompact(s.totalQty) +
+          " (점유율 " + formatPercent(s.share, 1) + ", " + s.trustGrade + "등급, 단가 " + formatNumber(s.avgUnitPrice, 1) + ")";
+      });
+      return res;
+    }
+
+    // fallback: 거래처 관리 목록
+    var suppliers = state.supplierAdminItems || [];
+    if (!suppliers.length) return "등록된 거래처 데이터가 없습니다.";
+    var totalSupply = suppliers.reduce(function (sum, item) { return sum + (Number(item.yearlySupply) || 0); }, 0);
+    var avgPerf = getSupplierAdminAveragePerformance();
+    var top = suppliers.slice().sort(function (a, b) { return b.yearlySupply - a.yearlySupply; })[0];
+    return yearLabel + " 거래처 현황\n" +
+      "등록 거래처: " + suppliers.length + "개사\n" +
+      "연간 납품량 합계: " + formatNumber(totalSupply) + "톤\n" +
+      "평균 성과율: " + formatPercent(avgPerf, 1) + "\n" +
+      "최대 납품: " + top.name + " (" + formatNumber(top.yearlySupply) + "톤)";
+  }
+
+  function buildVerifiedAllocationAnswer(query, yearLabel) {
+    var allocation = getSectionData("allocation");
+    if (!allocation?.monthly?.length) {
+      return yearLabel + " 공장 배분 데이터가 없습니다.";
+    }
+
+    // 단일 월
+    if (query.months.length === 1) {
+      var row = allocation.monthly[query.months[0]];
+      if (!row) return (query.months[0] + 1) + "월 공장 배분 데이터가 없습니다.";
+      if (query.factory === "인천") {
+        return row.month + " 인천 공장 배분\n" +
+          "계획: " + formatNumber(row.incheonPlan) + "톤\n" +
+          "실적: " + formatNumber(row.incheonActual) + "톤\n" +
+          "달성률: " + formatPercent(row.incheonRate, 1);
+      }
+      if (query.factory === "포항") {
+        return row.month + " 포항 공장 배분\n" +
+          "계획: " + formatNumber(row.pohangPlan) + "톤\n" +
+          "실적: " + formatNumber(row.pohangActual) + "톤\n" +
+          "달성률: " + formatPercent(row.pohangRate, 1);
+      }
+      return row.month + " 공장 배분\n" +
+        "인천: 계획 " + formatNumber(row.incheonPlan) + "톤 / 실적 " + formatNumber(row.incheonActual) + "톤 (달성률 " + formatPercent(row.incheonRate, 1) + ")\n" +
+        "포항: 계획 " + formatNumber(row.pohangPlan) + "톤 / 실적 " + formatNumber(row.pohangActual) + "톤 (달성률 " + formatPercent(row.pohangRate, 1) + ")";
+    }
+
+    // 복수 월 / 범위
+    var rm = chatRangeMonths(query);
+    if (rm && rm.length > 1) {
+      var rows = rm.map(function (mi) { return allocation.monthly[mi]; }).filter(Boolean);
+      if (!rows.length) return chatRangeLabel(query) + " 공장 배분 데이터가 없습니다.";
+      var sIP = rows.reduce(function (s, r) { return s + r.incheonPlan; }, 0);
+      var sIA = rows.reduce(function (s, r) { return s + r.incheonActual; }, 0);
+      var sPP = rows.reduce(function (s, r) { return s + r.pohangPlan; }, 0);
+      var sPA = rows.reduce(function (s, r) { return s + r.pohangActual; }, 0);
+      var lbl = yearLabel + " " + chatRangeLabel(query);
+      if (query.factory === "인천") {
+        return lbl + " 인천 공장 배분\n" +
+          "계획: " + formatNumber(sIP) + "톤 / 실적: " + formatNumber(sIA) + "톤\n" +
+          "달성률: " + formatPercent(percent(sIA, sIP), 1);
+      }
+      if (query.factory === "포항") {
+        return lbl + " 포항 공장 배분\n" +
+          "계획: " + formatNumber(sPP) + "톤 / 실적: " + formatNumber(sPA) + "톤\n" +
+          "달성률: " + formatPercent(percent(sPA, sPP), 1);
+      }
+      return lbl + " 공장 배분\n" +
+        "인천: 계획 " + formatNumber(sIP) + "톤 / 실적 " + formatNumber(sIA) + "톤 (달성률 " + formatPercent(percent(sIA, sIP), 1) + ")\n" +
+        "포항: 계획 " + formatNumber(sPP) + "톤 / 실적 " + formatNumber(sPA) + "톤 (달성률 " + formatPercent(percent(sPA, sPP), 1) + ")";
+    }
+
+    // 전체 - 특정 공장
+    if (query.factory === "인천") {
+      var iResult = yearLabel + " 인천 공장 배분\n" +
+        "계획: " + formatNumber(allocation.incheon.planTotal) + "톤\n" +
+        "실적: " + formatNumber(allocation.incheon.actualTotal) + "톤\n" +
+        "달성률: " + formatPercent(allocation.incheon.achievementRate, 1);
+      var incheonData = getIncheonAllocationData();
+      if (incheonData?.gradeMix?.length) {
+        iResult += "\n\n[등급 구성]";
+        incheonData.gradeMix.forEach(function (g) {
+          iResult += "\n" + g.name + ": " + formatNumber(g.qty) + "톤 (" + formatPercent(g.share, 1) + ")";
+        });
+      }
+      return iResult;
+    }
+    if (query.factory === "포항") {
+      var pResult = yearLabel + " 포항 공장 배분\n" +
+        "계획: " + formatNumber(allocation.pohang.planTotal) + "톤\n" +
+        "실적: " + formatNumber(allocation.pohang.actualTotal) + "톤\n" +
+        "달성률: " + formatPercent(allocation.pohang.achievementRate, 1);
+      if (allocation.pohang.gradeMix?.length) {
+        pResult += "\n\n[등급 구성]";
+        allocation.pohang.gradeMix.forEach(function (g) {
+          pResult += "\n" + g.name + ": " + formatNumber(g.qty) + "톤 (" + formatPercent(g.share, 1) + ")";
+        });
+      }
+      return pResult;
+    }
+
+    // 전체 공장
+    return yearLabel + " 공장 배분 현황\n" +
+      "인천: 계획 " + formatNumber(allocation.incheon.planTotal) + "톤 / 실적 " + formatNumber(allocation.incheon.actualTotal) + "톤 (달성률 " + formatPercent(allocation.incheon.achievementRate, 1) + ")\n" +
+      "포항: 계획 " + formatNumber(allocation.pohang.planTotal) + "톤 / 실적 " + formatNumber(allocation.pohang.actualTotal) + "톤 (달성률 " + formatPercent(allocation.pohang.achievementRate, 1) + ")";
+  }
+
+  function verifyGeneratedChatAnswer(answer) {
+    return typeof answer === "string" && answer.trim().length > 0 && !/undefined|null|NaN/.test(answer);
+  }
+
+  function generateVerifiedChatResponse(text) {
+    var query = parseVerifiedChatQuery(text);
+    var yearLabel = getSelectedYear() + "년";
+    var intentOrder = getVerifiedChatIntentOrder(query);
+
+    for (var index = 0; index < intentOrder.length; index += 1) {
+      var candidate = "";
+      switch (intentOrder[index]) {
+        case "plan": candidate = buildVerifiedPlanAnswer(query, yearLabel); break;
+        case "purchase": candidate = buildVerifiedPurchaseAnswer(query, yearLabel); break;
+        case "grade": candidate = buildVerifiedGradeAnswer(query, yearLabel); break;
+        case "import": candidate = buildVerifiedImportAnswer(query, yearLabel); break;
+        case "supplier": candidate = buildVerifiedSupplierAnswer(query, yearLabel); break;
+        case "allocation": candidate = buildVerifiedAllocationAnswer(query, yearLabel); break;
+        case "overview": candidate = buildVerifiedOverviewAnswer(query, yearLabel); break;
+      }
+      if (verifyGeneratedChatAnswer(candidate)) {
+        return candidate;
       }
     }
 
-    // 범위 질문
-    if (query.range === "상반기" || query.range === "하반기") {
-      const rStart = query.range === "상반기" ? 0 : 6;
-      const rEnd = query.range === "상반기" ? 6 : 12;
-      const sliced = monthly.slice(rStart, Math.min(rEnd, monthly.length));
-      if (!sliced.length) { return query.range + " 데이터가 없습니다."; }
-      const sumPlan = sliced.reduce(function (s, r) { return s + r.plan; }, 0);
-      const sumActual = sliced.reduce(function (s, r) { return s + r.actual; }, 0);
-      const hRate = sumPlan ? (sumActual / sumPlan) * 100 : 0;
-      return query.range + " 합계:\n계획: " + formatNumber(sumPlan) + "톤\n실적: " + formatNumber(sumActual) + "톤\n달성률: " + formatPercent(hRate, 1);
-    }
-
-    // 전체/연간 범위
-    if (query.range === "전체") {
-      const totalPlan = monthly.reduce(function (s, r) { return s + r.plan; }, 0);
-      const totalActual = monthly.reduce(function (s, r) { return s + r.actual; }, 0);
-      const totalRate = totalPlan ? (totalActual / totalPlan) * 100 : 0;
-      return yearLabel + " 전체 합계:\n계획: " + formatNumber(totalPlan) + "톤\n실적: " + formatNumber(totalActual) + "톤\n달성률: " + formatPercent(totalRate, 1);
-    }
-
-    // 계획 또는 실적 키워드만 (월 없이)
-    if (chatHas(kw, "계획") || chatHas(kw, "실적")) {
-      const tPlan = monthly.reduce(function (s, r) { return s + r.plan; }, 0);
-      const tActual = monthly.reduce(function (s, r) { return s + r.actual; }, 0);
-      const tRate = tPlan ? (tActual / tPlan) * 100 : 0;
-      return yearLabel + " 전체:\n계획 합계: " + formatNumber(tPlan) + "톤\n실적 합계: " + formatNumber(tActual) + "톤\n달성률: " + formatPercent(tRate, 1);
-    }
-
-    return "죄송합니다. 질문을 이해하지 못했습니다.\n아래와 같은 질문을 해보세요:\n- \"7월 계획과 실적은?\"\n- \"누계 달성률 알려줘\"\n- \"거래처 현황\"\n- \"등급별 비중\"\n- \"구매 금액\"\n- \"공장 배분 현황\"\n- \"수입 현황\"";
+    return "질문을 정확히 이해하지 못했습니다.\n아래와 같이 질문해 보세요:\n" +
+      "- \"7월 계획과 실적은?\"\n" +
+      "- \"상반기 구매 현황\"\n" +
+      "- \"1분기 달성률\"\n" +
+      "- \"등급별 비중\"\n" +
+      "- \"일보앤틱 거래처 현황\"\n" +
+      "- \"인천 공장 배분\"\n" +
+      "- \"수입 현황\"\n" +
+      "- \"전체 현황 요약\"";
   }
 
   function addChatMessage(container, text, role) {
@@ -3305,7 +3743,7 @@
     if (existing) { existing.remove(); }
     const suggestions = document.createElement("div");
     suggestions.className = "chatbot-suggestions";
-    const chips = ["7월 계획과 실적은?", "누계 달성률 알려줘", "거래처 현황", "등급별 비중은?", "구매 금액", "공장 배분 현황"];
+    const chips = ["7월 계획과 실적은?", "1분기 달성률", "상반기 구매 현황", "등급별 비중", "거래처별 실적", "전체 현황 요약"];
     chips.forEach(function (chipText) {
       const btn = document.createElement("button");
       btn.type = "button";
@@ -3321,7 +3759,6 @@
   function setupChatbot() {
     const popup = document.getElementById("chatbotPopup");
     const fab = document.getElementById("chatbotFab");
-    const fabIcon = document.getElementById("chatbotFabIcon");
     const closeBtn = document.getElementById("chatbotCloseBtn");
     const resetBtn = document.getElementById("chatbotResetBtn");
     const messages = document.getElementById("chatbotMessages");
@@ -3332,7 +3769,7 @@
     function togglePopup() {
       const isOpen = popup.classList.contains("open");
       popup.classList.toggle("open");
-      fabIcon.textContent = isOpen ? "\uD83D\uDCAC" : "\u2715";
+      fab.classList.toggle("active", !isOpen);
       if (!isOpen) { input.focus(); }
     }
 
@@ -3349,7 +3786,7 @@
       const chipContainer = messages.querySelector(".chatbot-suggestions");
       if (chipContainer) { chipContainer.remove(); }
       addChatMessage(messages, question, "user");
-      const answer = generateChatResponse(question);
+      const answer = generateVerifiedChatResponse(question);
       addChatMessage(messages, answer, "bot");
     }
 
