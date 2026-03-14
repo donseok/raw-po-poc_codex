@@ -303,15 +303,24 @@
 
   function loadGradeMappings() {
     try {
-      const raw = localStorage.getItem(GRADE_MAPPING_STORAGE_KEY);
-      state.gradeMappings = raw ? normalizeGradeMappings(JSON.parse(raw)) : cloneMappings(DEFAULT_GRADE_MAPPINGS);
+      const stored = window.appStorage ? window.appStorage.getSync(GRADE_MAPPING_STORAGE_KEY) : undefined;
+      if (stored !== undefined) {
+        state.gradeMappings = normalizeGradeMappings(stored);
+      } else {
+        const raw = localStorage.getItem(GRADE_MAPPING_STORAGE_KEY);
+        state.gradeMappings = raw ? normalizeGradeMappings(JSON.parse(raw)) : cloneMappings(DEFAULT_GRADE_MAPPINGS);
+      }
     } catch {
       state.gradeMappings = cloneMappings(DEFAULT_GRADE_MAPPINGS);
     }
   }
 
   function saveGradeMappings() {
-    localStorage.setItem(GRADE_MAPPING_STORAGE_KEY, JSON.stringify(state.gradeMappings));
+    if (window.appStorage) {
+      window.appStorage.set(GRADE_MAPPING_STORAGE_KEY, state.gradeMappings);
+    } else {
+      localStorage.setItem(GRADE_MAPPING_STORAGE_KEY, JSON.stringify(state.gradeMappings));
+    }
   }
 
   function parseRawTransactionText(rawText) {
@@ -375,12 +384,15 @@
 
   function loadRawTransactions() {
     try {
-      const raw = localStorage.getItem(RAW_TRANSACTION_STORAGE_KEY);
-      if (!raw) {
+      const stored = window.appStorage ? window.appStorage.getSync(RAW_TRANSACTION_STORAGE_KEY) : undefined;
+      const parsed = stored !== undefined ? stored : (() => {
+        const raw = localStorage.getItem(RAW_TRANSACTION_STORAGE_KEY);
+        return raw ? JSON.parse(raw) : null;
+      })();
+      if (!parsed) {
         state.rawTransactionsByYear = {};
         return;
       }
-      const parsed = JSON.parse(raw);
       state.rawTransactionsByYear = Object.fromEntries(
         Object.entries(parsed || {}).map(([year, rows]) => [year, normalizeRawTransactions(rows)])
       );
@@ -390,7 +402,12 @@
   }
 
   function saveRawTransactions() {
-    localStorage.setItem(RAW_TRANSACTION_STORAGE_KEY, JSON.stringify(state.rawTransactionsByYear || {}));
+    const data = state.rawTransactionsByYear || {};
+    if (window.appStorage) {
+      window.appStorage.set(RAW_TRANSACTION_STORAGE_KEY, data);
+    } else {
+      localStorage.setItem(RAW_TRANSACTION_STORAGE_KEY, JSON.stringify(data));
+    }
   }
 
   function getRawTransactionsForYear(year = getSelectedYear()) {
@@ -847,12 +864,15 @@
 
   function loadSupplierAdminItems() {
     try {
-      const raw = localStorage.getItem(SUPPLIER_ADMIN_STORAGE_KEY);
-      if (!raw) {
+      const stored = window.appStorage ? window.appStorage.getSync(SUPPLIER_ADMIN_STORAGE_KEY) : undefined;
+      const parsed = stored !== undefined ? stored : (() => {
+        const raw = localStorage.getItem(SUPPLIER_ADMIN_STORAGE_KEY);
+        return raw ? JSON.parse(raw) : null;
+      })();
+      if (!parsed) {
         state.supplierAdminItems = DEFAULT_SUPPLIER_ADMIN_ITEMS.map((item) => ({ ...item }));
         return;
       }
-      const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) {
         throw new Error("Invalid supplier items");
       }
@@ -866,7 +886,11 @@
   }
 
   function saveSupplierAdminItems() {
-    localStorage.setItem(SUPPLIER_ADMIN_STORAGE_KEY, JSON.stringify(state.supplierAdminItems));
+    if (window.appStorage) {
+      window.appStorage.set(SUPPLIER_ADMIN_STORAGE_KEY, state.supplierAdminItems);
+    } else {
+      localStorage.setItem(SUPPLIER_ADMIN_STORAGE_KEY, JSON.stringify(state.supplierAdminItems));
+    }
   }
 
   function supplierAdminGradeClass(grade) {
@@ -1154,15 +1178,19 @@
 
   function loadPlanOverride() {
     try {
-      const raw = localStorage.getItem(PLAN_PASTE_STORAGE_KEY);
-      if (!raw) {
+      const stored = window.appStorage ? window.appStorage.getSync(PLAN_PASTE_STORAGE_KEY) : undefined;
+      const parsed = stored !== undefined ? stored : (() => {
+        const raw = localStorage.getItem(PLAN_PASTE_STORAGE_KEY);
+        return raw ? JSON.parse(raw) : null;
+      })();
+      if (!parsed) {
         state.planOverrides = {};
         return;
       }
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      if (typeof parsed !== "object" || Array.isArray(parsed)) {
         state.planOverrides = {};
-        localStorage.removeItem(PLAN_PASTE_STORAGE_KEY);
+        if (window.appStorage) { window.appStorage.remove(PLAN_PASTE_STORAGE_KEY); }
+        else { localStorage.removeItem(PLAN_PASTE_STORAGE_KEY); }
         return;
       }
       state.planOverrides = Object.fromEntries(
@@ -1171,23 +1199,36 @@
           .filter(([, dataset]) => dataset)
       );
     } catch {
-      localStorage.removeItem(PLAN_PASTE_STORAGE_KEY);
+      if (window.appStorage) { window.appStorage.remove(PLAN_PASTE_STORAGE_KEY); }
+      else { localStorage.removeItem(PLAN_PASTE_STORAGE_KEY); }
       state.planOverrides = {};
     }
   }
 
   function savePlanOverride(dataset) {
     state.planOverrides[getSelectedYear()] = dataset;
-    localStorage.setItem(PLAN_PASTE_STORAGE_KEY, JSON.stringify(state.planOverrides));
+    if (window.appStorage) {
+      window.appStorage.set(PLAN_PASTE_STORAGE_KEY, state.planOverrides);
+    } else {
+      localStorage.setItem(PLAN_PASTE_STORAGE_KEY, JSON.stringify(state.planOverrides));
+    }
   }
 
   function clearPlanOverride() {
     delete state.planOverrides[getSelectedYear()];
     if (Object.keys(state.planOverrides).length) {
-      localStorage.setItem(PLAN_PASTE_STORAGE_KEY, JSON.stringify(state.planOverrides));
+      if (window.appStorage) {
+        window.appStorage.set(PLAN_PASTE_STORAGE_KEY, state.planOverrides);
+      } else {
+        localStorage.setItem(PLAN_PASTE_STORAGE_KEY, JSON.stringify(state.planOverrides));
+      }
       return;
     }
-    localStorage.removeItem(PLAN_PASTE_STORAGE_KEY);
+    if (window.appStorage) {
+      window.appStorage.remove(PLAN_PASTE_STORAGE_KEY);
+    } else {
+      localStorage.removeItem(PLAN_PASTE_STORAGE_KEY);
+    }
   }
 
   function getPlanPasteCell(rowKey, monthIndex) {
@@ -1735,11 +1776,12 @@
 
   function readStoredUsers() {
     try {
-      const raw = localStorage.getItem("usersData");
-      if (!raw) {
-        return null;
-      }
-      const parsed = JSON.parse(raw);
+      const stored = window.appStorage ? window.appStorage.getSync("usersData") : undefined;
+      const parsed = stored !== undefined ? stored : (() => {
+        const raw = localStorage.getItem("usersData");
+        return raw ? JSON.parse(raw) : null;
+      })();
+      if (!parsed) return null;
       return Array.isArray(parsed.data) ? parsed.data : null;
     } catch {
       return null;
@@ -1810,8 +1852,7 @@
       가용 데이터: ${availableSections.length ? availableSections.join(", ") : "없음"}<br>
       ${data.meta.displayNote}
     `;
-    document.getElementById("footerNote").textContent =
-      "참고 사이트의 헤더/탭/카드/차트 스타일을 유지하고, 첨부 파일에 없는 거래처 메타 정보는 raw data 기반 파생 지표로 대체했습니다.";
+    document.getElementById("footerNote").textContent = "Copywright(c) 동국시스템즈";
   }
 
   function setupYearSelector() {
@@ -2930,5 +2971,9 @@
     renderActiveTab(initialTab);
   }
 
-  init();
+  if (window.appStorage) {
+    window.appStorage.ready.then(function () { init(); });
+  } else {
+    init();
+  }
 })();

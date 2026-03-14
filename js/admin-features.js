@@ -155,31 +155,46 @@
   }
 
   function readStoredData(key, normalize) {
-    var raw = localStorage.getItem(key);
-    if (!raw) {
-      return null;
+    var stored = window.appStorage ? window.appStorage.getSync(key) : undefined;
+    var parsed;
+    if (stored !== undefined) {
+      parsed = stored;
+    } else {
+      var raw = localStorage.getItem(key);
+      if (!raw) {
+        return null;
+      }
+      try {
+        parsed = JSON.parse(raw);
+      } catch (error) {
+        localStorage.removeItem(key);
+        return null;
+      }
     }
     try {
-      var parsed = JSON.parse(raw);
       var normalized = normalize(parsed.data);
       if (!normalized) {
         throw new Error("Invalid storage payload");
       }
       return normalized;
     } catch (error) {
-      localStorage.removeItem(key);
+      if (window.appStorage) {
+        window.appStorage.remove(key);
+      }
       return null;
     }
   }
 
   function writeStoredData(key, data) {
-    localStorage.setItem(
-      key,
-      JSON.stringify({
-        data: data,
-        timestamp: new Date().toISOString()
-      })
-    );
+    var envelope = {
+      data: data,
+      timestamp: new Date().toISOString()
+    };
+    if (window.appStorage) {
+      window.appStorage.set(key, envelope);
+    } else {
+      localStorage.setItem(key, JSON.stringify(envelope));
+    }
   }
 
   function generateNoticeId() {
@@ -1100,7 +1115,13 @@
     loadUsersFromStorage();
   }
 
-  initAdminFeatures();
+  if (window.appStorage) {
+    window.appStorage.ready.then(function () {
+      initAdminFeatures();
+    });
+  } else {
+    initAdminFeatures();
+  }
 
   window.showModal = showModal;
   window.hideModal = hideModal;

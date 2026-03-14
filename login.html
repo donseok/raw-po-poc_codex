@@ -202,6 +202,7 @@
     <div class="login-footer">동일한 디자인 톤을 유지하되, 데이터는 첨부 엑셀 기준으로 재구성했습니다.</div>
   </div>
 
+  <script src="js/storage.js"></script>
   <script>
     if (sessionStorage.getItem("loggedInUser")) {
       location.href = "index.html";
@@ -232,12 +233,13 @@
 
     function getRegisteredUsers() {
       try {
-        const raw = localStorage.getItem("usersData");
-        if (!raw) {
-          return null;
+        var stored = window.appStorage ? window.appStorage.getSync("usersData") : undefined;
+        if (stored === undefined) {
+          var raw = localStorage.getItem("usersData");
+          if (!raw) return null;
+          stored = JSON.parse(raw);
         }
-        const parsed = JSON.parse(raw);
-        return Array.isArray(parsed.data) && parsed.data.length ? parsed.data : null;
+        return Array.isArray(stored.data) && stored.data.length ? stored.data : null;
       } catch {
         return null;
       }
