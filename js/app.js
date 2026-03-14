@@ -257,7 +257,7 @@
               pluginOptions.format === "percent"
                 ? `${Number(value).toFixed(1)}%`
                 : formatCompact(value);
-            ctx.fillStyle = dataset.borderColor || pluginOptions.color || themeText;
+            ctx.fillStyle = pluginOptions.color || themeText;
             ctx.fillText(label, bar.x, bar.y - 6);
           });
         }
