@@ -155,9 +155,9 @@
   };
 
   const DEFAULT_GRADE_MAPPINGS = {
-    국고상: ["생철A", "생철B", "생철AL", "슈레디B"],
-    국고중: ["중량B", "중량AS", "중량A", "중량 ALC(가위)", "중량BS", "모터블럭", "경량B", "경량A", "경량TC", "경량S"],
-    국고하: ["길로틴A", "길로틴B", "선반C", "중량BLS", "중량C", "경량C", "경량TC", "중량BLC", "중량D", "압축B"],
+    국고상: ["생철A", "생철B", "생철AL", "슈레더B"],
+    국고중: ["중량A", "중량AS", "중AL", "중량 ALC(가위)", "중량BS", "모터블럭"],
+    국고하: ["중량B", "경량A", "경량B", "경량L", "길로틴A", "길로틴B", "절단S", "압축A", "압축B", "슈레더C", "중량BLS", "중량C", "경량C", "경량T", "경량TC", "경량S", "중량BLC", "중BL"],
     선반설: ["선반A", "선반C", "압축C", "압축D"],
     기타: []
   };
@@ -2047,6 +2047,16 @@
       }
     });
 
+    const resetMappingButton = document.getElementById("resetMappingBtn");
+    resetMappingButton?.addEventListener("click", () => {
+      if (!confirm("등급 매핑을 기본값으로 복원하시겠습니까?")) return;
+      state.gradeMappings = cloneMappings(DEFAULT_GRADE_MAPPINGS);
+      saveGradeMappings();
+      renderMappingGroups();
+      renderActiveTab(document.querySelector(".tab-content.active")?.id.replace("tab-", "") || "plan");
+      window.showToast?.("등급 매핑을 기본값으로 복원했습니다.", "success");
+    });
+
     applyRawButton?.addEventListener("click", applyRawPasteInput);
     resetRawButton?.addEventListener("click", resetRawPasteInput);
 
@@ -2548,6 +2558,25 @@
 
     clearEmptyChartMessage("incheonAllocationChart");
     clearEmptyChartMessage("pohangAllocationChart");
+
+    const isLowTurning = (name) => /국고\s*하|선반설/.test(name);
+    const calcLowTurningRatio = (gradeMix) => {
+      if (!gradeMix?.length) return 0;
+      return gradeMix
+        .filter((item) => isLowTurning(item.name))
+        .reduce((sum, item) => sum + item.share, 0);
+    };
+    const incheonLowRatio = roundNumber(calcLowTurningRatio(allocation.incheon.gradeMix), 2);
+    const prevYear = String(Number(getSelectedYear()) - 1);
+    const prevAllocation = data.years?.[prevYear]?.allocation || null;
+    const prevIncheonLowRatio = prevAllocation
+      ? roundNumber(calcLowTurningRatio(prevAllocation.incheon?.gradeMix), 2)
+      : null;
+    const lowRatioDelta = prevIncheonLowRatio != null ? roundNumber(incheonLowRatio - prevIncheonLowRatio, 2) : null;
+    const lowRatioSub = lowRatioDelta != null
+      ? `전년도 대비 ${lowRatioDelta >= 0 ? "+" : ""}${formatPercent(lowRatioDelta, 2)}p`
+      : "전년도 데이터 없음";
+
     document.getElementById("allocationKpis").innerHTML = [
       kpiCard(
         "인천 계획/실적",
@@ -2564,6 +2593,12 @@
         "accent"
       ),
       kpiCard(
+        "국고하+선반설 비율",
+        `${formatPercent(incheonLowRatio, 2)}<small></small>`,
+        lowRatioSub,
+        "warning"
+      ),
+      kpiCard(
         "포항 계획/실적",
         `${formatCompact(allocation.pohang.planTotal)}<small> / ${formatCompact(
           allocation.pohang.actualTotal
@@ -2575,7 +2610,7 @@
         "포항 달성률",
         `${formatPercent(allocation.pohang.achievementRate, 1)}<small></small>`,
         "계획 대비 누계 실적",
-        "warning"
+        ""
       )
     ].join("");
 
@@ -2870,19 +2905,24 @@
         "accent"
       ),
       kpiCard(
-        "전년 대비 증감",
-        `${formatNumber(gradeData.deltaShare, 2)}<small>%p</small>`,
-        `요청 슬라이드의 증감 지표 <span class="${deltaClass}">${
-          gradeData.deltaShare >= 0 ? "상승" : "하락"
-        }</span>`,
+        "구매량/입고금액 비율",
+        `${purchasesData?.totalAmount ? formatNumber(totalPurchaseQty / (purchasesData.totalAmount / 1000000), 2) : "—"}<small>톤/백만원</small>`,
+        `월별 구매량 총합 / 누계입고금액`,
         "success"
       ),
-      kpiCard(
-        "주력 등급",
-        `${primaryCategory.name}<small></small>`,
-        `${gradeData.currentYear} 비중 ${formatPercent(primaryCategory.share, 2)}`,
-        "warning"
-      )
+      (() => {
+        const delta = roundNumber(gradeData.lowTurningRatio - gradeData.compareLowTurningRatio, 2);
+        const hasPrev = Number.isFinite(gradeData.compareLowTurningRatio) && gradeData.compareLowTurningRatio > 0;
+        const sub = hasPrev
+          ? `전년도 대비 ${delta >= 0 ? "+" : ""}${formatPercent(delta, 2)}p`
+          : "전년도 데이터 없음";
+        return kpiCard(
+          "국고하+선반설 비율",
+          `${formatPercent(gradeData.lowTurningRatio, 2)}<small></small>`,
+          sub,
+          "warning"
+        );
+      })()
     ].join("");
 
     document.getElementById("importShipmentTable").innerHTML = importShipmentRows
@@ -3247,11 +3287,11 @@
     }
 
     const primaryCat = [...gData.mix].sort((a, b) => b.qty - a.qty)[0];
+    const pData = getPurchasesData();
+    const totalQty = gData.mix.reduce((s, r) => s + r.qty, 0);
     children.push(docxKpiTable([
-      { label: "국고하+선반설 비율", value: formatPercent(gData.lowTurningRatio, 2) },
-      { label: `${gData.compareYear} 동일 비율`, value: formatPercent(gData.compareLowTurningRatio, 2) },
-      { label: "전년 대비 증감", value: `${formatNumber(gData.deltaShare, 2)}%p` },
-      { label: "주력 등급", value: primaryCat.name }
+      { label: "구매량/입고금액 비율", value: `${pData?.totalAmount ? formatNumber(totalQty / (pData.totalAmount / 1000000), 2) : "—"} 톤/백만원` },
+      { label: "국고하+선반설 비율", value: formatPercent(gData.lowTurningRatio, 2) + (gData.compareLowTurningRatio > 0 ? " (전년 " + formatPercent(gData.compareLowTurningRatio, 2) + ")" : "") }
     ]));
     children.push(docxSpacer());
 
