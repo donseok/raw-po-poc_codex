@@ -309,12 +309,18 @@ def build_dashboard_data(source_path):
     tx_2024 = build_transactions(raw_2024, grade_mapping)
     tx_2023 = build_transactions(raw_2023, grade_mapping)
 
-    suppliers = build_supplier_summary(tx_2024)
-    supplier_performance_avg = round_number(
-        sum(item["performanceRate"] for item in suppliers) / len(suppliers), 1
+    suppliers_2024 = build_supplier_summary(tx_2024)
+    suppliers_2023 = build_supplier_summary(tx_2023)
+    supplier_performance_avg_2024 = round_number(
+        sum(item["performanceRate"] for item in suppliers_2024) / len(suppliers_2024), 1
     )
-    top_supplier_series = suppliers[:3]
-    purchase_monthly = build_monthly_purchase_summary(tx_2024)
+    supplier_performance_avg_2023 = round_number(
+        sum(item["performanceRate"] for item in suppliers_2023) / len(suppliers_2023), 1
+    )
+    top_supplier_series_2024 = suppliers_2024[:3]
+    top_supplier_series_2023 = suppliers_2023[:3]
+    purchase_monthly_2024 = build_monthly_purchase_summary(tx_2024)
+    purchase_monthly_2023 = build_monthly_purchase_summary(tx_2023)
     mix_2024 = build_macro_mix(tx_2024)
     mix_2023 = build_macro_mix(tx_2023)
     low_turning_2024 = round_number(
@@ -372,37 +378,29 @@ def build_dashboard_data(source_path):
     total_qty_2024 = round_number(sum(tx["qty"] for tx in tx_2024), 0)
     total_amount_2024 = round_number(sum(tx["amount"] for tx in tx_2024), 0)
     avg_unit_price_2024 = round_number(total_amount_2024 / total_qty_2024, 1)
+    total_qty_2023 = round_number(sum(tx["qty"] for tx in tx_2023), 0)
+    total_amount_2023 = round_number(sum(tx["amount"] for tx in tx_2023), 0)
+    avg_unit_price_2023 = round_number(total_amount_2023 / total_qty_2023, 1)
 
-    data = {
-        "meta": {
-            "sourceFile": str(source_path),
-            "generatedAt": datetime.now().isoformat(timespec="seconds"),
-            "displayNote": "원본 엑셀 값 기준으로 가공했으며, 금액/수량 단위는 파일 값을 그대로 사용합니다.",
-            "labels": {
-                "amount": "입고금액",
-                "quantity": "입고량",
-            },
-        },
-        "overview": {
-            "annualTarget": round_number(sum(total_plan), 0),
-            "cumulativeActual": round_number(sum(total_actual), 0),
-            "attainmentRate": round_number(percent(sum(total_actual), sum(total_plan)), 2),
-            "supplierPerformanceAvg": supplier_performance_avg,
-            "annualTargetDisplay": compact_number(sum(total_plan)),
-            "cumulativeActualDisplay": compact_number(sum(total_actual)),
-            "attainmentRateDisplay": f"{round_number(percent(sum(total_actual), sum(total_plan)), 1):.1f}%",
-            "supplierPerformanceAvgDisplay": f"{supplier_performance_avg:.1f}%",
-        },
-        "plan": {
-            "monthly": plan_rows,
-            "chart": {
-                "labels": MONTH_LABELS,
-                "plan": [row["plan"] for row in plan_rows],
-                "actual": [row["actual"] for row in plan_rows],
-            },
-        },
-        "suppliers": {
-            "averagePerformance": supplier_performance_avg,
+    def build_overview(annual_target, cumulative_actual, attainment_rate, supplier_avg):
+        return {
+            "annualTarget": annual_target,
+            "cumulativeActual": cumulative_actual,
+            "attainmentRate": attainment_rate,
+            "supplierPerformanceAvg": supplier_avg,
+            "annualTargetDisplay": compact_number(annual_target) if annual_target is not None else "-",
+            "cumulativeActualDisplay": compact_number(cumulative_actual)
+            if cumulative_actual is not None
+            else "-",
+            "attainmentRateDisplay": (
+                f"{round_number(attainment_rate, 1):.1f}%" if attainment_rate is not None else "-"
+            ),
+            "supplierPerformanceAvgDisplay": f"{supplier_avg:.1f}%",
+        }
+
+    def build_supplier_bundle(suppliers, top_supplier_series, avg_performance):
+        return {
+            "averagePerformance": avg_performance,
             "shareChart": [
                 {"label": item["supplier"], "value": item["totalQty"]}
                 for item in suppliers
@@ -415,26 +413,131 @@ def build_dashboard_data(source_path):
                 ],
             },
             "table": suppliers,
+        }
+
+    def build_purchase_bundle(total_qty, total_amount, avg_unit_price, monthly):
+        return {
+            "totalQty": total_qty,
+            "totalAmount": total_amount,
+            "avgUnitPrice": avg_unit_price,
+            "totalQtyDisplay": compact_number(total_qty),
+            "totalAmountDisplay": compact_number(total_amount),
+            "avgUnitPriceDisplay": f"{avg_unit_price:,.1f}",
+            "monthly": monthly,
+        }
+
+    def build_grade_import_bundle(current_year, compare_year, current_ratio, compare_ratio, current_mix, compare_mix, current_monthly, compare_monthly):
+        comparison = build_category_comparison(current_mix, compare_mix)
+        if current_year < compare_year:
+            comparison = [
+                {
+                    "category": row["category"],
+                    "currentQty": row["qty2023"],
+                    "currentShare": row["share2023"],
+                    "compareQty": row["qty2024"],
+                    "compareShare": row["share2024"],
+                    "diffShare": round_number(row["share2023"] - row["share2024"], 2),
+                }
+                for row in comparison
+            ]
+        else:
+            comparison = [
+                {
+                    "category": row["category"],
+                    "currentQty": row["qty2024"],
+                    "currentShare": row["share2024"],
+                    "compareQty": row["qty2023"],
+                    "compareShare": row["share2023"],
+                    "diffShare": row["diffShare"],
+                }
+                for row in comparison
+            ]
+
+        return {
+            "currentYear": str(current_year),
+            "compareYear": str(compare_year),
+            "lowTurningRatio": current_ratio,
+            "compareLowTurningRatio": compare_ratio,
+            "deltaShare": round_number(current_ratio - compare_ratio, 2),
+            "mix": current_mix,
+            "compareMix": compare_mix,
+            "monthlyFocusedRatio": current_monthly,
+            "compareMonthlyFocusedRatio": compare_monthly,
+            "comparisonTable": comparison,
+        }
+
+    data = {
+        "meta": {
+            "sourceFile": str(source_path),
+            "generatedAt": datetime.now().isoformat(timespec="seconds"),
+            "displayNote": "원본 엑셀 값 기준으로 가공했으며, 금액/수량 단위는 파일 값을 그대로 사용합니다.",
+            "defaultYear": "2024",
+            "availableYears": ["2024", "2023"],
+            "labels": {
+                "amount": "입고금액",
+                "quantity": "입고량",
+            },
         },
-        "purchases": {
-            "totalQty": total_qty_2024,
-            "totalAmount": total_amount_2024,
-            "avgUnitPrice": avg_unit_price_2024,
-            "totalQtyDisplay": compact_number(total_qty_2024),
-            "totalAmountDisplay": compact_number(total_amount_2024),
-            "avgUnitPriceDisplay": f"{avg_unit_price_2024:,.1f}",
-            "monthly": purchase_monthly,
-        },
-        "allocation": allocation,
-        "gradeImport": {
-            "lowTurningRatio2024": low_turning_2024,
-            "lowTurningRatio2023": low_turning_2023,
-            "deltaShare": round_number(low_turning_2024 - low_turning_2023, 2),
-            "mix2024": mix_2024,
-            "mix2023": mix_2023,
-            "monthlyFocusedRatio2024": build_macro_ratio_by_month(tx_2024),
-            "monthlyFocusedRatio2023": build_macro_ratio_by_month(tx_2023),
-            "comparisonTable": build_category_comparison(mix_2024, mix_2023),
+        "years": {
+            "2024": {
+                "overview": build_overview(
+                    round_number(sum(total_plan), 0),
+                    round_number(sum(total_actual), 0),
+                    round_number(percent(sum(total_actual), sum(total_plan)), 2),
+                    supplier_performance_avg_2024,
+                ),
+                "plan": {
+                    "monthly": plan_rows,
+                    "chart": {
+                        "labels": MONTH_LABELS,
+                        "plan": [row["plan"] for row in plan_rows],
+                        "actual": [row["actual"] for row in plan_rows],
+                    },
+                },
+                "suppliers": build_supplier_bundle(
+                    suppliers_2024, top_supplier_series_2024, supplier_performance_avg_2024
+                ),
+                "purchases": build_purchase_bundle(
+                    total_qty_2024, total_amount_2024, avg_unit_price_2024, purchase_monthly_2024
+                ),
+                "allocation": allocation,
+                "gradeImport": build_grade_import_bundle(
+                    2024,
+                    2023,
+                    low_turning_2024,
+                    low_turning_2023,
+                    mix_2024,
+                    mix_2023,
+                    build_macro_ratio_by_month(tx_2024),
+                    build_macro_ratio_by_month(tx_2023),
+                ),
+            },
+            "2023": {
+                "overview": build_overview(
+                    None,
+                    total_qty_2023,
+                    None,
+                    supplier_performance_avg_2023,
+                ),
+                "plan": None,
+                "suppliers": build_supplier_bundle(
+                    suppliers_2023, top_supplier_series_2023, supplier_performance_avg_2023
+                ),
+                "purchases": build_purchase_bundle(
+                    total_qty_2023, total_amount_2023, avg_unit_price_2023, purchase_monthly_2023
+                ),
+                "allocation": None,
+                "gradeImport": build_grade_import_bundle(
+                    2023,
+                    2024,
+                    low_turning_2023,
+                    low_turning_2024,
+                    mix_2023,
+                    mix_2024,
+                    build_macro_ratio_by_month(tx_2023),
+                    build_macro_ratio_by_month(tx_2024),
+                ),
+            },
         },
     }
     return data

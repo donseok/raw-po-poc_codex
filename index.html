@@ -23,15 +23,19 @@
       </div>
       <div class="header-right">
         <div class="header-chip" id="currentDate"></div>
+        <div class="header-chip header-control">
+          <label class="sr-only" for="yearSelector">조회 연도</label>
+          <span class="header-control-label">조회 연도</span>
+          <select id="yearSelector" class="header-select"></select>
+        </div>
         <div class="header-chip" id="userDisplay">동국제강 원료기획팀 | 이돈석 팀장님</div>
-        <button class="btn btn-accent btn-sm" id="exportBtn">엑셀 내보내기</button>
+        <button class="btn btn-accent btn-sm" id="exportBtn">보고서 내보내기</button>
         <button class="btn btn-outline btn-sm" id="logoutBtn">로그아웃</button>
       </div>
     </header>
 
     <nav class="tab-nav" aria-label="대시보드 섹션">
-      <button class="tab-btn active" data-tab="plan">수급계획</button>
-      <button class="tab-btn" data-tab="suppliers">거래처관리</button>
+      <button class="tab-btn active" data-tab="plan">부재료실적 모니터링</button>
       <button class="tab-btn" data-tab="purchases">구매실적</button>
       <button class="tab-btn" data-tab="allocation">공장배분</button>
       <button class="tab-btn" data-tab="gradeImport">등급/수입관리</button>
@@ -43,110 +47,6 @@
       <section class="info-banner" id="dataBanner" hidden></section>
 
       <section class="tab-content active section-stack" id="tab-plan">
-        <article class="card">
-          <div class="table-toolbar">
-            <div class="card-title" style="margin: 0;"><span class="icon"></span>엑셀 복사/붙여넣기</div>
-            <div class="toolbar-actions">
-              <button class="btn btn-primary btn-sm" id="applyPlanPasteBtn" type="button">붙여넣은 값 적용</button>
-              <button class="btn btn-outline btn-sm" id="resetPlanPasteBtn" type="button">기본 데이터 복원</button>
-            </div>
-          </div>
-          <p class="page-note">
-            첨부 이미지 양식처럼 월 헤더와 `인천/포항`의 `국내고철 구매 계획`, `실적` 4개 행을 엑셀에서 그대로 복사한 뒤 아래 그리드 셀을 클릭하고 붙여넣으세요.
-            붙여넣은 값은 셀에서 직접 수정할 수 있고, 인천과 포항 값을 월별로 합산해 수급계획 차트와 누계 실적을 다시 계산합니다.
-          </p>
-          <div class="table-wrap plan-paste-wrap">
-            <table class="plan-paste-grid" id="planPasteGrid">
-              <thead>
-                <tr>
-                  <th rowspan="2" class="plan-paste-th text-center">구분</th>
-                  <th rowspan="2" class="plan-paste-th text-center">항목</th>
-                  <th colspan="12" class="plan-paste-th text-center">수량</th>
-                </tr>
-                <tr>
-                  <th class="text-right">1월</th>
-                  <th class="text-right">2월</th>
-                  <th class="text-right">3월</th>
-                  <th class="text-right">4월</th>
-                  <th class="text-right">5월</th>
-                  <th class="text-right">6월</th>
-                  <th class="text-right">7월</th>
-                  <th class="text-right">8월</th>
-                  <th class="text-right">9월</th>
-                  <th class="text-right">10월</th>
-                  <th class="text-right">11월</th>
-                  <th class="text-right">12월</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <th rowspan="2" class="plan-paste-group">인천</th>
-                  <th class="plan-paste-label">국내고철 구매 계획</th>
-                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="0" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="1" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="2" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="3" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="4" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="5" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="6" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="7" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="8" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="9" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="10" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="11" inputmode="numeric"></td>
-                </tr>
-                <tr>
-                  <th class="plan-paste-label plan-paste-label-muted">실적</th>
-                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="0" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="1" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="2" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="3" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="4" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="5" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="6" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="7" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="8" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="9" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="10" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="incheonActual" data-month="11" inputmode="numeric"></td>
-                </tr>
-                <tr>
-                  <th rowspan="2" class="plan-paste-group">포항</th>
-                  <th class="plan-paste-label">국내고철 구매 계획</th>
-                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="0" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="1" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="2" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="3" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="4" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="5" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="6" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="7" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="8" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="9" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="10" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="11" inputmode="numeric"></td>
-                </tr>
-                <tr>
-                  <th class="plan-paste-label plan-paste-label-muted">실적</th>
-                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="0" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="1" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="2" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="3" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="4" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="5" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="6" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="7" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="8" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="9" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="10" inputmode="numeric"></td>
-                  <td><input class="plan-paste-cell" data-row="pohangActual" data-month="11" inputmode="numeric"></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="paste-status" id="planPasteStatus">현재는 기본 수급계획 데이터를 사용 중입니다.</div>
-        </article>
-
         <div class="kpi-row" id="planKpis"></div>
 
         <div class="grid-2">
@@ -164,18 +64,151 @@
           <article class="card">
             <div class="card-head">
               <div>
-                <div class="card-title"><span class="icon"></span>핵심 관찰 포인트</div>
-                <p class="card-copy">첨부 슬라이드에서 요구한 KPI를 빠르게 해석할 수 있도록 요약했습니다.</p>
+                <div class="card-title"><span class="icon"></span>월별 주요 거래처 납품 추이</div>
+                <p class="card-copy">월별 주요 거래처 납품 추이를 우측 카드에서 바로 확인할 수 있도록 배치했습니다.</p>
               </div>
             </div>
-            <div class="list-grid" id="planHighlights"></div>
+            <div class="chart-container"><canvas id="supplierTrendChart"></canvas></div>
           </article>
         </div>
 
         <article class="card">
+          <div class="card-head">
+            <div>
+              <div class="card-title"><span class="icon"></span>핵심 체크 포인트</div>
+              <p class="card-copy">사용자가 특이 데이터와 변동 구간을 빠르게 확인할 수 있도록 주요 포인트를 정리합니다.</p>
+            </div>
+          </div>
+          <div class="list-grid" id="planHighlights"></div>
+        </article>
+
+        <article class="card plan-paste-card">
+          <button
+            class="plan-paste-toggle"
+            id="planPasteToggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="planPastePanel"
+          >
+            <div class="plan-paste-toggle-copy">
+              <div class="card-title" style="margin: 0;"><span class="icon"></span>월별 계획 대비 실적 데이터</div>
+              <p class="card-copy">월별 계획/실적 원본 데이터를 필요할 때만 펼쳐서 수정합니다.</p>
+            </div>
+            <span class="plan-paste-toggle-icon" aria-hidden="true"></span>
+          </button>
+          <div class="plan-paste-panel" id="planPastePanel" hidden>
+            <div class="plan-paste-hero">
+              <div class="plan-paste-head">
+                <p class="card-copy plan-paste-copy">
+                  엑셀에서 월 헤더와 인천/포항의 구매 계획, 실적 4개 행을 그대로 복사해 붙여넣으면 월별 차트와 누계 실적 상세가 함께 갱신됩니다.
+                </p>
+              </div>
+              <div class="toolbar-actions plan-paste-actions">
+                <button class="btn btn-primary btn-sm" id="applyPlanPasteBtn" type="button">붙여넣은 값 적용</button>
+                <button class="btn btn-outline btn-sm" id="resetPlanPasteBtn" type="button">기본 데이터 복원</button>
+              </div>
+            </div>
+            <div class="plan-paste-meta">
+              <span class="metric-pill"><strong>입력 범위</strong> 인천/포항 계획 및 실적 4개 행</span>
+              <span class="metric-pill"><strong>자동 반영</strong> KPI, 월별 차트, 누계 실적 상세</span>
+            </div>
+            <div class="table-wrap plan-paste-wrap">
+              <table class="plan-paste-grid" id="planPasteGrid">
+                <thead>
+                  <tr>
+                    <th rowspan="2" class="plan-paste-th text-center">구분</th>
+                    <th rowspan="2" class="plan-paste-th text-center">항목</th>
+                    <th colspan="12" class="plan-paste-th text-center">수량</th>
+                  </tr>
+                  <tr>
+                    <th class="text-right">1월</th>
+                    <th class="text-right">2월</th>
+                    <th class="text-right">3월</th>
+                    <th class="text-right">4월</th>
+                    <th class="text-right">5월</th>
+                    <th class="text-right">6월</th>
+                    <th class="text-right">7월</th>
+                    <th class="text-right">8월</th>
+                    <th class="text-right">9월</th>
+                    <th class="text-right">10월</th>
+                    <th class="text-right">11월</th>
+                    <th class="text-right">12월</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th rowspan="2" class="plan-paste-group">인천</th>
+                    <th class="plan-paste-label">국내고철 구매 계획</th>
+                    <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="0" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="1" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="2" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="3" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="4" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="5" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="6" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="7" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="8" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="9" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="10" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="incheonPlan" data-month="11" inputmode="numeric"></td>
+                  </tr>
+                  <tr>
+                    <th class="plan-paste-label plan-paste-label-muted">실적</th>
+                    <td><input class="plan-paste-cell" data-row="incheonActual" data-month="0" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="incheonActual" data-month="1" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="incheonActual" data-month="2" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="incheonActual" data-month="3" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="incheonActual" data-month="4" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="incheonActual" data-month="5" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="incheonActual" data-month="6" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="incheonActual" data-month="7" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="incheonActual" data-month="8" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="incheonActual" data-month="9" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="incheonActual" data-month="10" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="incheonActual" data-month="11" inputmode="numeric"></td>
+                  </tr>
+                  <tr>
+                    <th rowspan="2" class="plan-paste-group">포항</th>
+                    <th class="plan-paste-label">국내고철 구매 계획</th>
+                    <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="0" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="1" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="2" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="3" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="4" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="5" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="6" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="7" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="8" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="9" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="10" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="pohangPlan" data-month="11" inputmode="numeric"></td>
+                  </tr>
+                  <tr>
+                    <th class="plan-paste-label plan-paste-label-muted">실적</th>
+                    <td><input class="plan-paste-cell" data-row="pohangActual" data-month="0" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="pohangActual" data-month="1" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="pohangActual" data-month="2" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="pohangActual" data-month="3" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="pohangActual" data-month="4" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="pohangActual" data-month="5" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="pohangActual" data-month="6" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="pohangActual" data-month="7" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="pohangActual" data-month="8" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="pohangActual" data-month="9" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="pohangActual" data-month="10" inputmode="numeric"></td>
+                    <td><input class="plan-paste-cell" data-row="pohangActual" data-month="11" inputmode="numeric"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="paste-status" id="planPasteStatus">현재는 기본 수급계획 데이터를 사용 중입니다.</div>
+          </div>
+        </article>
+
+        <article class="card">
           <div class="table-toolbar">
             <div class="card-title" style="margin: 0;"><span class="icon"></span>월별 누계 실적 상세</div>
-            <div class="hint">연간 목표, 월 실적, 누계 달성률은 `2024년 계획 및 실적 1번` 시트를 기준으로 계산</div>
+            <div class="hint" id="planDetailHint"></div>
           </div>
           <div class="table-wrap">
             <table class="sortable-table" data-export="plan">
@@ -193,55 +226,119 @@
             </table>
           </div>
         </article>
-      </section>
 
-      <section class="tab-content section-stack" id="tab-suppliers">
-        <div class="kpi-row" id="supplierKpis"></div>
-
-        <article class="card">
-          <div class="table-toolbar">
-            <div class="card-title" style="margin: 0;"><span class="icon"></span>거래처 성과 테이블</div>
-            <div class="toolbar-actions">
-              <input class="toolbar-input" id="supplierSearch" type="search" placeholder="거래처명 검색">
-              <select class="toolbar-select" id="supplierGradeFilter">
-                <option value="all">모든 주력 등급</option>
-              </select>
-              <button class="btn btn-outline btn-sm" id="supplierFilterReset" type="button">초기화</button>
+        <section class="supplier-admin-section">
+          <div class="supplier-admin-toolbar">
+            <div class="supplier-admin-title">
+              <div class="card-title" style="margin: 0;"><span class="icon"></span>거래처 관리</div>
             </div>
+            <button class="btn btn-primary supplier-admin-add" type="button" id="supplierAddBtn">+ 거래처 등록</button>
           </div>
-          <div class="table-toolbar" style="margin-top: -4px;">
-            <div class="hint">원본 파일에는 연락처/지역 정보가 없어, 납품량·금액·성과율 중심으로 재구성</div>
-            <div class="hint" id="supplierResultMeta">전체 4개 거래처</div>
-          </div>
-          <div class="table-wrap">
-            <table class="sortable-table" data-export="suppliers">
-              <thead>
-                <tr>
-                  <th>거래처</th>
-                  <th class="text-right">누계 입고량</th>
-                  <th class="text-right">누계 입고금액</th>
-                  <th class="text-right">평균 단가</th>
-                  <th class="text-right">점유율</th>
-                  <th>주력 등급</th>
-                  <th>신뢰등급</th>
-                  <th class="text-right">납품 성과율</th>
-                </tr>
-              </thead>
-              <tbody id="supplierTable"></tbody>
-            </table>
+
+          <article class="card supplier-admin-card">
+            <div class="table-wrap supplier-admin-table-wrap">
+              <table class="supplier-admin-table sortable-table" data-export="suppliers">
+                <thead>
+                  <tr>
+                    <th>코드</th>
+                    <th>거래처명</th>
+                    <th>지역</th>
+                    <th>대표자</th>
+                    <th>연락처</th>
+                    <th class="text-right">월 공급능력(톤)</th>
+                    <th class="text-right">금년 납품량(톤)</th>
+                    <th>신뢰등급</th>
+                    <th class="text-right">납품실적</th>
+                  </tr>
+                </thead>
+                <tbody id="supplierAdminTable"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <article class="card plan-paste-card">
+          <button
+            class="plan-paste-toggle"
+            id="rawPasteToggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="rawPastePanel"
+          >
+            <div class="plan-paste-toggle-copy">
+              <div class="card-title" style="margin: 0;"><span class="icon"></span>거래처 납품 실적관리 데이터</div>
+              <p class="card-copy">첨부한 엑셀 양식 그대로 `전기일 / 공급업체 / 검수등급 / 단가 / 입고금액` 5개 열을 복사해 붙여넣습니다.</p>
+            </div>
+            <span class="plan-paste-toggle-icon" aria-hidden="true"></span>
+          </button>
+          <div class="plan-paste-panel" id="rawPastePanel" hidden>
+            <div class="card-head">
+              <div>
+                <p class="card-copy">
+                  붙여넣기 순서: `전기일`, `공급업체`, `검수등급`, `단가`, `입고금액`.
+                  첨부하신 시트처럼 A:E 열만 선택해서 그대로 붙여넣으면 선택 연도 기준 거래처 추이, 구매실적, 등급/수입관리 화면에 반영됩니다.
+                </p>
+              </div>
+              <div class="toolbar-actions">
+                <button class="btn btn-primary btn-sm" type="button" id="applyRawPasteBtn">원본 데이터 반영</button>
+                <button class="btn btn-outline btn-sm" type="button" id="resetRawPasteBtn">선택 연도 초기화</button>
+              </div>
+            </div>
+            <div class="table-wrap raw-paste-grid-wrap">
+              <table class="raw-paste-grid" id="rawPasteGrid">
+                <thead>
+                  <tr>
+                    <th>전기일</th>
+                    <th>공급업체명</th>
+                    <th>검수등급명</th>
+                    <th class="text-right">입고량</th>
+                    <th class="text-right">입고금액</th>
+                  </tr>
+                </thead>
+                <tbody id="rawPasteGridBody"></tbody>
+              </table>
+            </div>
+            <div class="paste-status" id="rawPasteStatus">선택 연도의 원본 실적 데이터가 아직 입력되지 않았습니다.</div>
           </div>
         </article>
 
-        <div class="grid-2">
-          <article class="card">
-            <div class="card-title"><span class="icon"></span>거래처별 납품 비중</div>
-            <div class="chart-container chart-doughnut"><canvas id="supplierShareChart"></canvas></div>
-          </article>
-          <article class="card">
-            <div class="card-title"><span class="icon"></span>월별 주요 거래처 납품 추이</div>
-            <div class="chart-container"><canvas id="supplierTrendChart"></canvas></div>
-          </article>
-        </div>
+        <article class="card plan-paste-card">
+          <button
+            class="plan-paste-toggle"
+            id="mappingToggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="mappingPanel"
+          >
+            <div class="plan-paste-toggle-copy">
+              <div class="card-title" style="margin: 0;"><span class="icon"></span>검수 등급 매핑 관리</div>
+              <p class="card-copy">상세 검수등급명을 `국고상`, `국고중`, `국고하`, `선반설`, `기타`로 매핑합니다.</p>
+            </div>
+            <span class="plan-paste-toggle-icon" aria-hidden="true"></span>
+          </button>
+          <div class="plan-paste-panel" id="mappingPanel" hidden>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="mappingMacroCategory">상위 분류</label>
+                <select id="mappingMacroCategory">
+                  <option value="국고상">국고상</option>
+                  <option value="국고중">국고중</option>
+                  <option value="국고하">국고하</option>
+                  <option value="선반설">선반설</option>
+                  <option value="기타">기타</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="mappingGradeName">상세 검수등급명</label>
+                <input id="mappingGradeName" type="text" placeholder="예: 중량AS">
+              </div>
+              <div class="form-group" style="align-self: end;">
+                <button class="btn btn-primary" type="button" id="addMappingBtn">매핑 추가</button>
+              </div>
+            </div>
+            <div id="mappingGroups" class="mapping-groups"></div>
+          </div>
+        </article>
       </section>
 
       <section class="tab-content section-stack" id="tab-purchases">
@@ -261,7 +358,7 @@
         <article class="card">
           <div class="table-toolbar">
             <div class="card-title" style="margin: 0;"><span class="icon"></span>월별 구매실적 상세</div>
-            <div class="hint">`인천공장 실적(2024년)` 시트의 입고량/입고금액 raw data 합계</div>
+            <div class="hint" id="purchaseDetailHint"></div>
           </div>
           <div class="table-wrap">
             <table class="sortable-table" data-export="purchases">
@@ -353,18 +450,18 @@
 
         <article class="card">
           <div class="table-toolbar">
-            <div class="card-title" style="margin: 0;"><span class="icon"></span>2024 / 2023 등급별 비교</div>
-            <div class="hint">원본 raw data에서 정의 탭을 적용해 거시 등급으로 재분류</div>
+            <div class="card-title" style="margin: 0;"><span class="icon"></span><span id="gradeImportTitle">등급별 비교</span></div>
+            <div class="hint" id="gradeImportHint">원본 raw data에서 정의 탭을 적용해 거시 등급으로 재분류</div>
           </div>
           <div class="table-wrap">
             <table class="sortable-table" data-export="gradeImport">
               <thead>
                 <tr>
                   <th>등급</th>
-                  <th class="text-right">2024 입고량</th>
-                  <th class="text-right">2024 비중</th>
-                  <th class="text-right">2023 입고량</th>
-                  <th class="text-right">2023 비중</th>
+                  <th class="text-right" id="gradeImportCurrentQtyHeader"></th>
+                  <th class="text-right" id="gradeImportCurrentShareHeader"></th>
+                  <th class="text-right" id="gradeImportCompareQtyHeader"></th>
+                  <th class="text-right" id="gradeImportCompareShareHeader"></th>
                   <th class="text-right">증감(%p)</th>
                 </tr>
               </thead>
@@ -535,6 +632,64 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="supplierModal">
+    <div class="modal" style="max-width: 560px;">
+      <button class="modal-close" type="button" onclick="hideModal('supplierModal')">&times;</button>
+      <div class="modal-title" id="supplierFormTitle">거래처 등록</div>
+      <form id="supplierForm">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="supplierCode">코드</label>
+            <input id="supplierCode" type="text" maxlength="10" placeholder="예: S009">
+          </div>
+          <div class="form-group">
+            <label for="supplierName">거래처명</label>
+            <input id="supplierName" type="text" placeholder="거래처명">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="supplierRegion">지역</label>
+            <input id="supplierRegion" type="text" placeholder="예: 인천">
+          </div>
+          <div class="form-group">
+            <label for="supplierOwner">대표자</label>
+            <input id="supplierOwner" type="text" placeholder="대표자명">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="supplierPhone">연락처</label>
+            <input id="supplierPhone" type="text" placeholder="예: 032-000-0000">
+          </div>
+          <div class="form-group">
+            <label for="supplierTrust">신뢰등급</label>
+            <select id="supplierTrust">
+              <option value="A">A</option>
+              <option value="B+">B+</option>
+              <option value="B">B</option>
+              <option value="C">C</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="supplierMonthlyCapacity">월 공급능력(톤)</label>
+            <input id="supplierMonthlyCapacity" type="number" min="0" step="1" placeholder="25000">
+          </div>
+          <div class="form-group">
+            <label for="supplierYearlySupply">금년 납품량(톤)</label>
+            <input id="supplierYearlySupply" type="number" min="0" step="1" placeholder="58200">
+          </div>
+        </div>
+        <div class="toolbar-actions" style="justify-content: flex-end;">
+          <button class="btn btn-outline" type="button" onclick="hideModal('supplierModal')">취소</button>
+          <button class="btn btn-primary" type="button" id="supplierSubmitBtn">저장</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="noticeFormModal">
     <div class="modal">
       <button class="modal-close" type="button" onclick="hideModal('noticeFormModal')">&times;</button>
@@ -670,6 +825,7 @@
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
   <script src="js/dashboard-data.js"></script>
   <script src="js/admin-features.js"></script>
   <script src="js/app.js"></script>
