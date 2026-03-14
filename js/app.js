@@ -2443,20 +2443,35 @@
       )
     ].join("");
 
+    const totalPlan = planRows.reduce((s, r) => s + (r.plan || 0), 0);
+    const totalActual = planRows.reduce((s, r) => s + (r.actual || 0), 0);
+    const lastRow = planRows[planRows.length - 1];
+    const totalCumPlan = lastRow.cumulativePlan || 0;
+    const totalCumActual = lastRow.cumulativeActual || 0;
+    const totalRate = lastRow.achievementRate;
+
     document.getElementById("planTable").innerHTML = planRows
       .map(
         (row) => `
           <tr>
             <td>${row.month}</td>
-            <td class="text-right">${formatNumber(row.plan)}</td>
-            <td class="text-right">${formatNumber(row.actual)}</td>
-            <td class="text-right">${formatNumber(row.cumulativePlan)}</td>
-            <td class="text-right">${formatNumber(row.cumulativeActual)}</td>
-            <td class="text-right">${formatPercent(row.achievementRate, 2)}</td>
+            <td class="text-right">${row.plan ? formatNumber(row.plan) : ""}</td>
+            <td class="text-right">${row.actual ? formatNumber(row.actual) : ""}</td>
+            <td class="text-right">${row.cumulativePlan ? formatNumber(row.cumulativePlan) : ""}</td>
+            <td class="text-right">${row.cumulativeActual ? formatNumber(row.cumulativeActual) : ""}</td>
+            <td class="text-right">${row.achievementRate ? formatPercent(row.achievementRate, 2) : ""}</td>
           </tr>
         `
       )
-      .join("");
+      .join("") +
+      `<tr style="font-weight:bold;background:var(--bg-light,#f5f5f5);">
+        <td>합계</td>
+        <td class="text-right">${totalPlan ? formatNumber(totalPlan) : ""}</td>
+        <td class="text-right">${totalActual ? formatNumber(totalActual) : ""}</td>
+        <td class="text-right">${totalCumPlan ? formatNumber(totalCumPlan) : ""}</td>
+        <td class="text-right">${totalCumActual ? formatNumber(totalCumActual) : ""}</td>
+        <td class="text-right">${totalRate ? formatPercent(totalRate, 2) : ""}</td>
+      </tr>`;
     applyTableSort(document.querySelector('table[data-export="plan"]'));
 
     makeBarChart("planChart", "planChart", {
@@ -3390,10 +3405,14 @@
     children.push(docxChartImage(images.supplierTrendChart, "거래처 추이 차트", 560, 280));
 
     children.push(docxSubHeading("월별 실적 테이블"));
+    const lastR = rows[rows.length - 1];
+    const docxTableRows = rows.map((r) => [r.month, r.plan ? formatNumber(r.plan) : "", r.actual ? formatNumber(r.actual) : "",
+      r.cumulativePlan ? formatNumber(r.cumulativePlan) : "", r.cumulativeActual ? formatNumber(r.cumulativeActual) : "", r.achievementRate ? formatPercent(r.achievementRate, 2) : ""]);
+    docxTableRows.push(["합계", annualTarget ? formatNumber(annualTarget) : "", cumActual ? formatNumber(cumActual) : "",
+      lastR.cumulativePlan ? formatNumber(lastR.cumulativePlan) : "", lastR.cumulativeActual ? formatNumber(lastR.cumulativeActual) : "", lastR.achievementRate ? formatPercent(lastR.achievementRate, 2) : ""]);
     children.push(docxDataTable(
       ["월", "계획", "실적", "누계 계획", "누계 실적", "달성률"],
-      rows.map((r) => [r.month, formatNumber(r.plan), formatNumber(r.actual),
-        formatNumber(r.cumulativePlan), formatNumber(r.cumulativeActual), formatPercent(r.achievementRate, 2)])
+      docxTableRows
     ));
     children.push(docxSpacer());
 
