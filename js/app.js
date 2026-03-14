@@ -172,7 +172,7 @@
   const tabLabels = {
     plan: "부재료실적 모니터링",
     purchases: "구매실적",
-    gradeImport: "등급/수입관리",
+    gradeImport: "등급별현황/수입관리",
     notice: "공지사항",
     user: "사용자관리"
   };
@@ -1570,7 +1570,7 @@
       status.textContent = `${getSelectedYearLabel()} 원본 실적 데이터가 아직 입력되지 않았습니다.`;
       return;
     }
-    status.textContent = `${getSelectedYearLabel()} 원본 실적 ${formatNumber(rows.length)}건이 저장되어 있습니다. 거래처 추이, 구매실적, 등급/수입관리에 반영됩니다.`;
+    status.textContent = `${getSelectedYearLabel()} 원본 실적 ${formatNumber(rows.length)}건이 저장되어 있습니다. 거래처 추이, 구매실적, 등급별현황/수입관리에 반영됩니다.`;
   }
 
   function createRawPasteGridRow(row = {}) {
@@ -2779,7 +2779,7 @@
     const gData = getGradeImportData();
 
     if (!gData?.comparisonTable?.length) {
-      children.push(docxNoData("등급/수입관리"));
+      children.push(docxNoData("등급별현황/수입관리"));
       return children;
     }
 
@@ -2888,7 +2888,7 @@
       const sectionDefs = [
         { title: "1. 부재료실적 모니터링", builder: buildDocxPlanSection },
         { title: "2. 구매실적", builder: buildDocxPurchasesSection },
-        { title: "3. 등급/수입관리", builder: buildDocxGradeImportSection }
+        { title: "3. 등급별현황/수입관리", builder: buildDocxGradeImportSection }
       ];
 
       const sections = [coverSection];
