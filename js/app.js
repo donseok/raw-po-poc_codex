@@ -1516,6 +1516,22 @@
     input.classList.toggle("has-value", hasValue);
   }
 
+  function updatePlanPasteRowTotals() {
+    document.querySelectorAll("[data-row-total]").forEach(function(cell) {
+      var rowKey = cell.getAttribute("data-row-total");
+      var sum = 0;
+      var hasAny = false;
+      for (var m = 0; m < 12; m++) {
+        var input = getPlanPasteCell(rowKey, m);
+        if (input && input.value.trim()) {
+          var v = parseClipboardNumber(input.value);
+          if (v !== null) { sum += v; hasAny = true; }
+        }
+      }
+      cell.textContent = hasAny ? formatNumber(sum) : "";
+    });
+  }
+
   function fillPlanPasteGrid(dataset) {
     if (!dataset || !Array.isArray(dataset.monthly)) {
       return;
@@ -1526,6 +1542,7 @@
       setPlanPasteCellValue("pohangPlan", monthIndex, row.pohangPlan);
       setPlanPasteCellValue("pohangActual", monthIndex, row.pohangActual);
     });
+    updatePlanPasteRowTotals();
   }
 
   function clearPlanPasteGrid() {
@@ -1533,6 +1550,7 @@
       input.value = "";
       input.classList.remove("has-value");
     });
+    updatePlanPasteRowTotals();
   }
 
   function readPlanPasteGrid() {
@@ -1676,6 +1694,7 @@
       input.addEventListener("focus", () => input.select());
       input.addEventListener("blur", () => {
         markPlanPasteCell(input);
+        updatePlanPasteRowTotals();
         const status = document.getElementById("planPasteStatus");
         if (status) {
           status.textContent = "그리드 값을 수정했습니다. 붙여넣은 값 적용 버튼을 누르면 수급계획에 반영됩니다.";
@@ -1683,6 +1702,7 @@
       });
       input.addEventListener("input", () => {
         input.classList.toggle("has-value", Boolean(normalizeClipboardCell(input.value)));
+        updatePlanPasteRowTotals();
         const status = document.getElementById("planPasteStatus");
         if (status) {
           status.textContent = "그리드 값을 수정했습니다. 붙여넣은 값 적용 버튼을 누르면 수급계획에 반영됩니다.";
@@ -1706,6 +1726,7 @@
       fillPlanPasteGrid(activeOverride);
     }
     updatePlanPasteStatus();
+    updatePlanPasteRowTotals();
 
     if (!activeOverride) {
       document.querySelectorAll(".plan-paste-cell").forEach((input) => {

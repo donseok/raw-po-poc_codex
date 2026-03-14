@@ -675,6 +675,15 @@ tr:hover {
   color: #0f2f85;
 }
 
+.plan-paste-total {
+  padding: 10px 8px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--primary-dark);
+  background: var(--gray-100);
+  min-width: 88px;
+}
+
 .badge-red {
   background: #ffebee;
   color: var(--danger);
