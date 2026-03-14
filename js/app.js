@@ -3168,40 +3168,78 @@
 
   /* ── DOCX 보고서 내보내기 ── */
 
+  /* ── DOCX 디자인 상수 ── */
+  const DOCX_COLORS = {
+    navy: "1A237E", navyLight: "283593", accent: "FF8F00",
+    success: "2E7D32", warning: "F57F17", danger: "C62828",
+    textDark: "212121", textMed: "555555", textLight: "888888",
+    bgLight: "F8F9FA", bgStripe: "F0F2F8", border: "E0E0E0"
+  };
+
   function docxSpacer() {
-    return new docx.Paragraph({ spacing: { after: 120 } });
+    return new docx.Paragraph({ spacing: { after: 160 } });
   }
 
   function docxSubHeading(text) {
     return new docx.Paragraph({
-      children: [new docx.TextRun({ text, bold: true, size: 26, color: "1A237E" })],
-      spacing: { before: 240, after: 120 }
+      children: [
+        new docx.TextRun({ text: "\u25A0 ", bold: true, size: 28, color: DOCX_COLORS.navy }),
+        new docx.TextRun({ text, bold: true, size: 28, color: DOCX_COLORS.navyLight })
+      ],
+      spacing: { before: 300, after: 120 }
+    });
+  }
+
+  function docxSectionTitle(text) {
+    return new docx.Paragraph({
+      children: [new docx.TextRun({ text, bold: true, size: 32, color: DOCX_COLORS.navy })],
+      spacing: { before: 120, after: 240 },
+      border: {
+        bottom: { style: docx.BorderStyle.SINGLE, size: 12, color: DOCX_COLORS.accent, space: 6 }
+      }
     });
   }
 
   function docxNoData(name) {
     return new docx.Paragraph({
-      children: [new docx.TextRun({ text: `${name} 데이터가 없습니다.`, italics: true, color: "888888" })],
+      children: [new docx.TextRun({ text: `${name} 데이터가 없습니다.`, italics: true, size: 20, color: DOCX_COLORS.textLight })],
       spacing: { after: 120 }
     });
   }
 
+  function docxCaption(text) {
+    return new docx.Paragraph({
+      children: [new docx.TextRun({ text, italics: true, size: 16, color: DOCX_COLORS.textLight })],
+      spacing: { after: 80 }
+    });
+  }
+
   function docxKpiTable(kpis) {
+    const cellWidth = Math.floor(100 / kpis.length);
     return new docx.Table({
       width: { size: 100, type: docx.WidthType.PERCENTAGE },
+      borders: {
+        top: { style: docx.BorderStyle.NONE },
+        bottom: { style: docx.BorderStyle.NONE },
+        left: { style: docx.BorderStyle.NONE },
+        right: { style: docx.BorderStyle.NONE },
+        insideHorizontal: { style: docx.BorderStyle.NONE },
+        insideVertical: { style: docx.BorderStyle.SINGLE, size: 1, color: DOCX_COLORS.border }
+      },
       rows: [
         new docx.TableRow({
           children: kpis.map((kpi) =>
             new docx.TableCell({
-              width: { size: 25, type: docx.WidthType.PERCENTAGE },
-              shading: { fill: "F5F5F5" },
-              margins: { top: 60, bottom: 60, left: 80, right: 80 },
+              width: { size: cellWidth, type: docx.WidthType.PERCENTAGE },
+              shading: { fill: DOCX_COLORS.bgLight },
+              margins: { top: 80, bottom: 80, left: 100, right: 100 },
               children: [
                 new docx.Paragraph({
-                  children: [new docx.TextRun({ text: kpi.label, size: 18, color: "666666" })]
+                  children: [new docx.TextRun({ text: kpi.label, size: 18, color: DOCX_COLORS.textMed })],
+                  spacing: { after: 40 }
                 }),
                 new docx.Paragraph({
-                  children: [new docx.TextRun({ text: kpi.value, bold: true, size: 22, color: "1A237E" })]
+                  children: [new docx.TextRun({ text: kpi.value, bold: true, size: 26, color: DOCX_COLORS.navy })]
                 })
               ]
             })
@@ -3216,8 +3254,8 @@
       tableHeader: true,
       children: headers.map((h) =>
         new docx.TableCell({
-          shading: { fill: "1A237E" },
-          margins: { top: 40, bottom: 40, left: 60, right: 60 },
+          shading: { fill: DOCX_COLORS.navy },
+          margins: { top: 50, bottom: 50, left: 60, right: 60 },
           children: [
             new docx.Paragraph({
               children: [new docx.TextRun({ text: h, bold: true, size: 18, color: "FFFFFF" })],
@@ -3227,15 +3265,16 @@
         })
       )
     });
-    const dataRows = rows.map((cells) =>
+    const dataRows = rows.map((cells, rowIdx) =>
       new docx.TableRow({
-        children: cells.map((cell, idx) =>
+        children: cells.map((cell, colIdx) =>
           new docx.TableCell({
-            margins: { top: 30, bottom: 30, left: 60, right: 60 },
+            shading: rowIdx % 2 === 1 ? { fill: DOCX_COLORS.bgStripe } : undefined,
+            margins: { top: 40, bottom: 40, left: 60, right: 60 },
             children: [
               new docx.Paragraph({
-                children: [new docx.TextRun({ text: String(cell), size: 18 })],
-                alignment: idx === 0 ? docx.AlignmentType.LEFT : docx.AlignmentType.RIGHT
+                children: [new docx.TextRun({ text: String(cell), size: 18, color: DOCX_COLORS.textDark })],
+                alignment: colIdx === 0 ? docx.AlignmentType.LEFT : docx.AlignmentType.RIGHT
               })
             ]
           })
@@ -3244,6 +3283,14 @@
     );
     return new docx.Table({
       width: { size: 100, type: docx.WidthType.PERCENTAGE },
+      borders: {
+        top: { style: docx.BorderStyle.SINGLE, size: 1, color: DOCX_COLORS.border },
+        bottom: { style: docx.BorderStyle.SINGLE, size: 1, color: DOCX_COLORS.border },
+        left: { style: docx.BorderStyle.SINGLE, size: 1, color: DOCX_COLORS.border },
+        right: { style: docx.BorderStyle.SINGLE, size: 1, color: DOCX_COLORS.border },
+        insideHorizontal: { style: docx.BorderStyle.SINGLE, size: 1, color: DOCX_COLORS.border },
+        insideVertical: { style: docx.BorderStyle.SINGLE, size: 1, color: DOCX_COLORS.border }
+      },
       rows: [headerRow, ...dataRows]
     });
   }
@@ -3479,28 +3526,37 @@
           page: { margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } }
         },
         children: [
-          new docx.Paragraph({ spacing: { before: 3600 } }),
+          new docx.Paragraph({ spacing: { before: 3200 } }),
           new docx.Paragraph({
-            children: [new docx.TextRun({ text: "동국제강 원료기획팀", size: 36, bold: true, color: "1A237E" })],
-            alignment: docx.AlignmentType.CENTER
-          }),
-          new docx.Paragraph({
-            children: [new docx.TextRun({ text: "실적 모니터링 대시보드", size: 32, bold: true, color: "1A237E" })],
+            children: [new docx.TextRun({ text: "동국제강 원료기획팀", size: 48, bold: true, color: DOCX_COLORS.navy })],
             alignment: docx.AlignmentType.CENTER,
-            spacing: { after: 400 }
+            spacing: { after: 80 }
           }),
           new docx.Paragraph({
-            children: [new docx.TextRun({ text: `${year}년 보고서`, size: 28, color: "333333" })],
+            children: [new docx.TextRun({ text: "원료 조달 실적 모니터링 보고서", size: 36, bold: true, color: DOCX_COLORS.navy })],
             alignment: docx.AlignmentType.CENTER,
-            spacing: { after: 200 }
+            spacing: { after: 300 }
           }),
           new docx.Paragraph({
-            children: [new docx.TextRun({ text: `생성일: ${today}`, size: 22, color: "666666" })],
             alignment: docx.AlignmentType.CENTER,
-            spacing: { after: 400 }
+            spacing: { after: 300 },
+            border: {
+              bottom: { style: docx.BorderStyle.SINGLE, size: 18, color: DOCX_COLORS.accent, space: 1 }
+            },
+            children: []
           }),
           new docx.Paragraph({
-            children: [new docx.TextRun({ text: `발행자: ${getUserDisplayText()}`, size: 22, color: "333333" })],
+            children: [new docx.TextRun({ text: `${year}년 보고서`, size: 32, color: DOCX_COLORS.textDark })],
+            alignment: docx.AlignmentType.CENTER,
+            spacing: { before: 200, after: 200 }
+          }),
+          new docx.Paragraph({
+            children: [new docx.TextRun({ text: `보고서 생성일: ${today}`, size: 24, color: DOCX_COLORS.textMed })],
+            alignment: docx.AlignmentType.CENTER,
+            spacing: { after: 120 }
+          }),
+          new docx.Paragraph({
+            children: [new docx.TextRun({ text: `발행: ${getUserDisplayText()}`, size: 24, color: DOCX_COLORS.textDark })],
             alignment: docx.AlignmentType.CENTER
           })
         ]
@@ -3508,16 +3564,15 @@
 
       const sectionDefs = [
         { title: "1. 부재료실적 모니터링", builder: buildDocxPlanSection },
-        { title: "2. 등급별현황/수입관리", builder: buildDocxGradeImportSection }
+        { title: "2. 구매실적", builder: buildDocxPurchasesSection },
+        { title: "3. 공장배분", builder: buildDocxAllocationSection },
+        { title: "4. 등급별현황/수입관리", builder: buildDocxGradeImportSection }
       ];
 
       const sections = [coverSection];
       for (const def of sectionDefs) {
         const sectionChildren = [
-          new docx.Paragraph({
-            children: [new docx.TextRun({ text: def.title, bold: true, size: 30, color: "1A237E" })],
-            spacing: { after: 200 }
-          }),
+          docxSectionTitle(def.title),
           ...def.builder(images)
         ];
         sections.push({
