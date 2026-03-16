@@ -2595,6 +2595,9 @@ function runMainApp() {
       // Supabase: 연도별 거래 데이터 지연 로드
       if (window.appStorage && window.appStorage.prefetchTransactionsForYear) {
         await window.appStorage.prefetchTransactionsForYear(event.target.value);
+        // prefetch 후 cache → state 동기화
+        loadRawTransactions();
+        _invalidateTxCache();
       }
 
       syncPlanPasteGridForYear();
@@ -2620,7 +2623,7 @@ function runMainApp() {
       document.getElementById("planHighlights").innerHTML = `<div class="empty-state">${getSelectedYearLabel()} 수급계획 데이터가 없습니다.</div>`;
       document.getElementById("planTable").innerHTML = makeUnavailableRow(6, `${getSelectedYearLabel()} 수급계획 데이터가 없습니다.`);
       setEmptyChartMessage("planChart", `${getSelectedYearLabel()} 차트 데이터가 없습니다.`);
-      setEmptyChartMessage("supplierTrendChart", `${getSelectedYearLabel()} 거래처 추이 데이터가 없습니다.`);
+      renderSupplierTrendChart(suppliersData);
       return;
     }
 
@@ -2768,6 +2771,10 @@ function runMainApp() {
       }
     });
 
+    renderSupplierTrendChart(suppliersData);
+  }
+
+  function renderSupplierTrendChart(suppliersData) {
     if (!suppliersData?.trendChart?.series?.length) {
       setEmptyChartMessage("supplierTrendChart", `${getSelectedYearLabel()} 거래처 추이 데이터가 없습니다.`);
       return;
