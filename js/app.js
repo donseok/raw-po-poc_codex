@@ -1434,7 +1434,7 @@ function runMainApp() {
   }
 
   function normalizePlanOverrideData(payload) {
-    if (!payload || typeof payload !== "object" || !Array.isArray(payload.monthly) || !payload.chart) {
+    if (!payload || typeof payload !== "object" || !Array.isArray(payload.monthly)) {
       return null;
     }
 
@@ -1653,7 +1653,7 @@ function runMainApp() {
       `${getSelectedYearLabel()} 최근 붙여넣기 적용: ${pastedAt.toLocaleString("ko-KR")} | 인천/포항 계획·실적 4개 행을 월별 합산해 반영했습니다.`;
   }
 
-  async function applyPlanPasteInput() {
+  function applyPlanPasteInput() {
     const gridDataset = readPlanPasteGrid();
     if (gridDataset.error) {
       if (window.showToast) {
@@ -1662,26 +1662,43 @@ function runMainApp() {
       return;
     }
 
+    // 로컬 state 업데이트 (DB 저장 없이)
+    state.planOverrides[getSelectedYear()] = gridDataset;
+
+    // UI 업데이트
+    fillPlanPasteGrid(gridDataset);
+    updatePlanPasteStatus();
+    renderPlan();
+
+    state._planAppliedButNotSaved = true;
+
+    if (window.showToast) {
+      window.showToast("적용 완료. 저장 버튼을 눌러 DB에 반영하세요.", "info");
+    }
+  }
+
+  async function savePlanToDB() {
+    if (!state._planAppliedButNotSaved) {
+      if (window.showToast) {
+        window.showToast("먼저 '붙여넣은 값 적용' 버튼을 눌러주세요.", "error");
+      }
+      return;
+    }
+
     try {
-      // 저장 중 메시지
       if (window.showToast) {
         window.showToast("데이터를 저장 중입니다...", "info");
       }
 
-      // Supabase에 저장 (완료 대기)
-      await savePlanOverride(gridDataset);
+      await savePlanOverride(state.planOverrides[getSelectedYear()]);
 
-      // UI 업데이트
-      fillPlanPasteGrid(gridDataset);
-      updatePlanPasteStatus();
-      renderPlan();
+      state._planAppliedButNotSaved = false;
 
-      // 성공 메시지
       if (window.showToast) {
-        window.showToast("✓ 월별 계획/실적을 수급계획에 반영하고 데이터베이스에 저장했습니다.", "success");
+        window.showToast("저장되었습니다.", "success");
       }
     } catch (error) {
-      console.error("Plan paste apply error:", error);
+      console.error("Plan DB save error:", error);
       if (window.showToast) {
         window.showToast("데이터 저장 중 오류가 발생했습니다: " + (error.message || "Unknown error"), "error");
       }
@@ -1699,8 +1716,10 @@ function runMainApp() {
       updatePlanPasteStatus();
       renderPlan();
 
+      state._planAppliedButNotSaved = false;
+
       if (window.showToast) {
-        window.showToast("✓ 수급계획을 기본 데이터로 복원하고 데이터베이스에 저장했습니다.", "success");
+        window.showToast("수급계획을 기본 데이터로 복원하고 데이터베이스에 저장했습니다.", "success");
       }
     } catch (error) {
       console.error("Plan paste reset error:", error);
@@ -1738,11 +1757,15 @@ function runMainApp() {
   function setupPlanPaste() {
     loadPlanOverride();
     const applyButton = document.getElementById("applyPlanPasteBtn");
+    const saveButton = document.getElementById("savePlanToDBBtn");
     const resetButton = document.getElementById("resetPlanPasteBtn");
     const grid = document.getElementById("planPasteGrid");
 
     if (applyButton) {
       applyButton.addEventListener("click", applyPlanPasteInput);
+    }
+    if (saveButton) {
+      saveButton.addEventListener("click", savePlanToDB);
     }
     if (resetButton) {
       resetButton.addEventListener("click", resetPlanPasteInput);
