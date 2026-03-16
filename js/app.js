@@ -1,4 +1,27 @@
-﻿(function () {
+﻿// ── 앱 초기화: Supabase 저장소 연결 ──
+(async function initializeApp() {
+  // 1. Supabase 저장소 준비 대기
+  if (window.appStorage?.ready) {
+    await window.appStorage.ready;
+  }
+
+  // 2. 로그인 사용자 정보에서 ID 추출 + Supabase userId 설정
+  const loggedInUser = sessionStorage.getItem("loggedInUser");
+  if (loggedInUser && window.appStorage?.setUserId) {
+    try {
+      const userInfo = JSON.parse(loggedInUser);
+      window.appStorage.setUserId(userInfo.id);
+    } catch (e) {
+      console.warn("Failed to parse loggedInUser:", e);
+    }
+  }
+
+  // 3. 메인 앱 실행
+  runMainApp();
+})();
+
+// ── 메인 앱 로직 (기존 IIFE를 함수로 변경) ──
+function runMainApp() {
   const rawData = window.dashboardData;
   if (!rawData) {
     document.body.innerHTML = "<p style='padding:24px'>대시보드 데이터를 불러오지 못했습니다.</p>";
@@ -4548,23 +4571,6 @@
     }
   };
 
-  if (window.appStorage) {
-    window.appStorage.ready.then(function () {
-      init();
-
-      // Supabase 마이그레이션 배너 표시
-      if (window._supabaseMigrationPending && !localStorage.getItem("__supabase_migrated")) {
-        const migrationBanner = document.createElement("div");
-        migrationBanner.style.cssText =
-          "position:fixed;top:0;left:0;right:0;background:#ffc107;color:#000;padding:12px 16px;font-weight:bold;z-index:10000;text-align:center;";
-        migrationBanner.innerHTML =
-          '로컬에 저장된 데이터를 클라우드로 업로드하시겠습니까? ' +
-          '<button onclick="window.startDataMigration()" style="margin:0 8px;padding:6px 12px;background:#fff;border:1px solid #333;border-radius:4px;cursor:pointer;font-weight:bold;">업로드</button>' +
-          '<button onclick="this.parentElement.remove();localStorage.setItem(\'__supabase_migrated\',\'1\');" style="margin:0 8px;padding:6px 12px;background:#fff;border:1px solid #333;border-radius:4px;cursor:pointer;">나중에</button>';
-        document.body.prepend(migrationBanner);
-      }
-    });
-  } else {
-    init();
-  }
-})();
+  // 앱 초기화 실행
+  init();
+}
