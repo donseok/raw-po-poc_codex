@@ -1135,10 +1135,12 @@ function runMainApp() {
         state.supplierAdminItems = DEFAULT_SUPPLIER_ADMIN_ITEMS.map((item) => ({ ...item }));
         return;
       }
-      if (!Array.isArray(parsed)) {
+      // Supabase 포맷: { data: [...] }, localStorage 포맷: [...]
+      const items = Array.isArray(parsed) ? parsed : Array.isArray(parsed.data) ? parsed.data : null;
+      if (!items) {
         throw new Error("Invalid supplier items");
       }
-      state.supplierAdminItems = parsed.map(normalizeSupplierAdminItem).filter(Boolean);
+      state.supplierAdminItems = items.map(normalizeSupplierAdminItem).filter(Boolean);
       if (!state.supplierAdminItems.length) {
         state.supplierAdminItems = DEFAULT_SUPPLIER_ADMIN_ITEMS.map((item) => ({ ...item }));
       }
