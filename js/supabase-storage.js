@@ -14,17 +14,29 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4';
 
+// ── Config fetch 완료 대기 (버그 #2 수정: 레이스 컨디션 방지) ──
+if (window.__supabaseConfigReady) {
+  await window.__supabaseConfigReady;
+}
+
 (async function () {
   const SUPABASE_URL = window.SUPABASE_URL || '';
   const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || '';
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  // URL/KEY가 비어있으면 오프라인 모드
+  const supabase = (SUPABASE_URL && SUPABASE_ANON_KEY)
+    ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    : null;
+
+  if (!supabase) {
+    console.warn("appStorage: Supabase URL/KEY 없음 — 오프라인 모드");
+  }
 
   // ── 상태 변수 ──
   const _cache = {};
   const _txCache = {}; // 거래 데이터 캐시 (연도별)
   let _db = null;
-  let _offlineMode = false;
+  let _offlineMode = !supabase;
   let _userId = null;
   let _readyResolve;
   const _readyPromise = new Promise((resolve) => {
@@ -275,8 +287,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4';
 
   // ── Prefetch (startup) ──
   async function _prefetch() {
-    if (!_userId) {
-      console.warn("appStorage: prefetch skipped (userId not set)");
+    if (!_userId || _offlineMode) {
+      console.warn("appStorage: prefetch skipped", !_userId ? "(userId not set)" : "(offline mode)");
       _readyResolve();
       return;
     }
@@ -334,7 +346,25 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4';
         );
       }
 
-      // 6. 거래 데이터는 lazy-load (연도별)
+      // 6. 거래 데이터 — 현재 연도 + IDB에 캐시된 연도 로드
+      try {
+        const currentYear = new Date().getFullYear();
+        const yearsToLoad = new Set([String(currentYear)]);
+
+        // IDB 캐시에 이미 있는 연도도 Supabase에서 최신화
+        const idbTx = _cache.rawTransactionDataByYear;
+        if (idbTx && typeof idbTx === "object") {
+          for (const y of Object.keys(idbTx)) {
+            yearsToLoad.add(String(y));
+          }
+        }
+
+        for (const year of yearsToLoad) {
+          await _prefetchTransactionsForYear(year);
+        }
+      } catch (txErr) {
+        console.warn("appStorage: transaction prefetch partial failure", txErr);
+      }
 
       console.log("appStorage: Supabase prefetch complete");
     } catch (err) {
@@ -360,7 +390,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4';
 
   // ── Lazy-load transactions by year ──
   async function _prefetchTransactionsForYear(year) {
-    if (!_userId || _txCache[year]) {
+    if (!_userId || _txCache[year] || _offlineMode) {
       return;
     }
 
@@ -398,8 +428,23 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4';
   const appStorage = {
     ready: _readyPromise,
 
-    setUserId(userId) {
+    supabaseClient: supabase,
+
+    async setUserId(userId) {
       _userId = userId;
+      // userId 설정 시 즉시 prefetch 실행 + ready resolve
+      if (userId) {
+        await _prefetch();
+      } else {
+        _readyResolve();
+      }
+    },
+
+    // userId 없이 IDB 캐시만으로 ready를 resolve (비로그인 폴백)
+    resolveWithoutUser() {
+      if (!_userId) {
+        _readyResolve();
+      }
     },
 
     getSync(key) {
@@ -438,7 +483,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4';
     },
 
     async _saveToSupabase(key, val) {
-      if (!_userId) return;
+      if (!_userId || !supabase) return;
 
       try {
         const dbVal = _toDBFormat(key, val);
@@ -529,41 +574,41 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4';
         }
 
         if (key === "rawTransactionDataByYear" && typeof val === "object") {
-          const txList = _toDBFormat(key, val);
+          // 연도별로 순회하여 각 연도 데이터를 delete + insert
+          for (const [year, transactions] of Object.entries(val)) {
+            const yearNum = Number(year);
+            const txRows = (transactions || []).map(tx => ({
+              user_id: _userId,
+              year: yearNum,
+              date: tx.date,
+              month: tx.month,
+              supplier: tx.supplier,
+              detailed_grade: tx.detailedGrade,
+              macro: tx.macro,
+              unit_price: tx.unitPrice || 0,
+              amount: tx.amount || 0,
+              qty: tx.qty || 0
+            }));
 
-          // 해당 연도의 모든 거래 기록 삭제 후 새로 insert
-          // (transactions 테이블에는 unique constraint가 없으므로)
-          if (txList.length > 0) {
-            const year = txList[0].year;
-
-            // 같은 연도의 기존 데이터 삭제
+            // 해당 연도의 기존 데이터 삭제
             await supabase
               .from("transactions")
               .delete()
               .eq("user_id", _userId)
-              .eq("year", year);
+              .eq("year", yearNum);
 
-            // 새로운 데이터 insert (batch로 처리)
-            const batchSize = 1000;
-            for (let i = 0; i < txList.length; i += batchSize) {
-              const batch = txList.slice(i, i + batchSize);
-              const { error } = await supabase
-                .from("transactions")
-                .insert(batch.map(tx => ({
-                  user_id: _userId,
-                  year: tx.year,
-                  date: tx.date,
-                  month: tx.month,
-                  supplier: tx.supplier,
-                  detailed_grade: tx.detailed_grade,
-                  macro: tx.macro,
-                  unit_price: tx.unit_price,
-                  amount: tx.amount,
-                  qty: tx.qty
-                })));
-              if (error) {
-                console.error(`appStorage: failed to insert transactions batch`, error);
-                throw error;
+            // 새 데이터 batch insert
+            if (txRows.length > 0) {
+              const batchSize = 1000;
+              for (let i = 0; i < txRows.length; i += batchSize) {
+                const batch = txRows.slice(i, i + batchSize);
+                const { error } = await supabase
+                  .from("transactions")
+                  .insert(batch);
+                if (error) {
+                  console.error(`appStorage: failed to insert transactions batch for year ${year}`, error);
+                  throw error;
+                }
               }
             }
           }
@@ -575,7 +620,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4';
     },
 
     async _deleteFromSupabase(key) {
-      if (!_userId) return;
+      if (!_userId || !supabase) return;
 
       try {
         if (key === "noticesData") {
@@ -623,27 +668,29 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4';
   try {
     _db = await _openDB();
     console.log("appStorage: IndexedDB opened");
+
+    // IDB 데이터를 _cache에 즉시 로드 (오프라인 폴백 보장)
+    try {
+      const allRecords = await _readAllFromIDB(_db);
+      for (const record of allRecords) {
+        _cache[record.key] = record.value;
+      }
+      console.log("appStorage: IDB cache loaded", allRecords.length, "records");
+    } catch (idbReadErr) {
+      console.warn("appStorage: failed to read IDB cache", idbReadErr);
+    }
   } catch (err) {
     console.warn("appStorage: IndexedDB unavailable", err);
     _offlineMode = true;
   }
 
-  // userId가 설정되면 자동으로 prefetch
-  const checkReadyInterval = setInterval(async () => {
-    if (_userId) {
-      clearInterval(checkReadyInterval);
-      await _prefetch();
-    }
-  }, 50);
-
-  // 2초 후에도 userId가 없으면 그냥 진행
-  setTimeout(() => {
-    clearInterval(checkReadyInterval);
-    if (!_userId) {
-      console.warn("appStorage: userId not set after 2s, initializing without Supabase");
-      _readyResolve();
-    }
-  }, 2000);
+  // ready는 setUserId() → _prefetch() 완료 시 resolve됨.
+  // setUserId()가 호출되지 않는 경우를 대비한 폴백은 app.js에서 처리.
 
   window.appStorage = appStorage;
+
+  // app.js에 모듈 로딩 완료 시그널 (버그 #1 수정: 실행 순서 보장)
+  if (window.__appStorageReadyResolve) {
+    window.__appStorageReadyResolve();
+  }
 })();

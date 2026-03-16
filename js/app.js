@@ -1,19 +1,28 @@
 ﻿// ── 앱 초기화: Supabase 저장소 연결 ──
 (async function initializeApp() {
-  // 1. Supabase 저장소 준비 대기
-  if (window.appStorage?.ready) {
-    await window.appStorage.ready;
+  // 0. supabase-storage.js 모듈 로딩 대기 (type="module"은 deferred)
+  if (window.__appStorageReady) {
+    await window.__appStorageReady;
   }
 
-  // 2. 로그인 사용자 정보에서 ID 추출 + Supabase userId 설정
+  // 1. 로그인 사용자 정보에서 ID 추출 + Supabase userId 설정
+  //    setUserId()가 내부적으로 prefetch → ready resolve를 처리함
   const loggedInUser = sessionStorage.getItem("loggedInUser");
   if (loggedInUser && window.appStorage?.setUserId) {
     try {
       const userInfo = JSON.parse(loggedInUser);
-      window.appStorage.setUserId(userInfo.id);
+      await window.appStorage.setUserId(userInfo.id);
     } catch (e) {
       console.warn("Failed to parse loggedInUser:", e);
     }
+  } else if (window.appStorage?.resolveWithoutUser) {
+    // 비로그인 상태: IDB 캐시만으로 ready resolve
+    window.appStorage.resolveWithoutUser();
+  }
+
+  // 2. Supabase 저장소 준비 대기 (setUserId 없이도 IDB 캐시는 이미 로드됨)
+  if (window.appStorage?.ready) {
+    await window.appStorage.ready;
   }
 
   // 3. 메인 앱 실행

@@ -9,21 +9,24 @@
       location.href = "login.html";
     }
   </script>
-      <script>
-              // Supabase environment variables (fetched from Vercel serverless API)
-              (async function() {
-                        try {
-                                    const res = await fetch('/api/config');
-                                    const config = await res.json();
-                                    window.SUPABASE_URL = config.SUPABASE_URL;
-                                    window.SUPABASE_ANON_KEY = config.SUPABASE_ANON_KEY;
-                        } catch (e) {
-                                    console.warn('Failed to fetch config, using defaults');
-                                    window.SUPABASE_URL = window.SUPABASE_URL || '';
-                                    window.SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || '';
-                        }
-              })();
-      </script>
+  <script>
+    // Supabase config fetch — 결과를 글로벌 Promise로 저장하여 모듈에서 await 가능
+    window.__supabaseConfigReady = (async function() {
+      try {
+        var res = await fetch('/api/config');
+        var config = await res.json();
+        window.SUPABASE_URL = config.SUPABASE_URL;
+        window.SUPABASE_ANON_KEY = config.SUPABASE_ANON_KEY;
+      } catch (e) {
+        console.warn('Failed to fetch config, using defaults');
+        window.SUPABASE_URL = window.SUPABASE_URL || '';
+        window.SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || '';
+      }
+    })();
+    // appStorage 모듈 로딩 완료 시그널 (supabase-storage.js가 resolve)
+    window.__appStorageReadyResolve = null;
+    window.__appStorageReady = new Promise(function(r) { window.__appStorageReadyResolve = r; });
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="stylesheet" href="css/variables.css">
@@ -921,10 +924,52 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
-  <script type="module" src="js/supabase-storage.js"></script>
-  <script src="js/dashboard-data.js"></script>
-  <script src="js/admin-features.js"></script>
-  <script src="js/app.js"></script>
+  <script>
+  // ── 앱 부트스트랩: config fetch → storage 초기화 → 앱 스크립트 순차 로딩 ──
+  (async function bootApp() {
+    // 1. Config fetch 완료 대기 (head에서 시작된 Promise)
+    if (window.__supabaseConfigReady) {
+      await window.__supabaseConfigReady;
+    }
+
+    // 2. supabase-storage.js 동적 import (ES module이므로 import() 사용)
+    try {
+      await import('./js/supabase-storage.js');
+    } catch (e) {
+      console.warn('supabase-storage.js 로드 실패:', e);
+    }
+
+    // 3. appStorage 설정 대기 (supabase-storage.js 모듈 로딩 완료 시그널)
+    if (window.__appStorageReady) {
+      await Promise.race([
+        window.__appStorageReady,
+        new Promise(function(r) { setTimeout(r, 5000); }) // 5초 타임아웃 폴백
+      ]);
+    }
+
+    // 4. 순차 스크립트 로딩 헬퍼
+    function loadScript(src) {
+      return new Promise(function(resolve) {
+        var s = document.createElement('script');
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = function() { console.warn('스크립트 로드 실패: ' + src); resolve(); };
+        document.body.appendChild(s);
+      });
+    }
+
+    await loadScript('js/dashboard-data.js');
+
+    // 5. appStorage가 없으면 storage.js를 폴백으로 로드
+    if (!window.appStorage) {
+      console.warn('appStorage 미초기화 — storage.js 폴백 로드');
+      await loadScript('js/storage.js');
+    }
+
+    await loadScript('js/admin-features.js');
+    await loadScript('js/app.js');
+  })();
+  </script>
   <script>
     (function() {
       var btn = document.getElementById("themeToggle");
