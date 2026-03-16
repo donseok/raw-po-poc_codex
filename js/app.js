@@ -166,6 +166,7 @@ function runMainApp() {
   const RAW_TRANSACTION_STORAGE_KEY = "rawTransactionDataByYear";
   const GRADE_MAPPING_STORAGE_KEY = "gradeMacroMappings";
   const PLAN_GRID_ROWS = ["incheonPlan", "incheonActual", "pohangPlan", "pohangActual"];
+  const PLAN_GRID_ROW_ORDER = ["incheonPlan", "incheonActual", "pohangPlan", "pohangActual"];
   const RAW_PASTE_PAGE_SIZE = 100;
   let _gradeMappingsVersion = 0;
   const _txCache = { key: null, data: null };
@@ -1744,28 +1745,92 @@ function runMainApp() {
     }
   }
 
-  function handlePlanGridPaste(event) {
-    const rawText = event.clipboardData?.getData("text/plain")?.trim();
+  function handlePlanCellPaste(event) {
+    var rawText = event.clipboardData ? event.clipboardData.getData("text/plain") : "";
+    rawText = rawText ? rawText.trim() : "";
     if (!rawText) {
+      return;
+    }
+
+    var rows = rawText.split(/\r?\n/).map(function(line) {
+      return line.split("\t").map(normalizeClipboardCell);
+    }).filter(function(cells) {
+      return cells.some(Boolean);
+    });
+
+    if (!rows.length) {
+      return;
+    }
+
+    // Single value (1x1): let the browser handle it natively
+    if (rows.length === 1 && rows[0].length === 1) {
       return;
     }
 
     event.preventDefault();
 
-    try {
-      const parsed = parsePlanPasteText(rawText);
-      fillPlanPasteGrid(parsed);
-      const status = document.getElementById("planPasteStatus");
-      if (status) {
-        status.textContent = "붙여넣기 완료. 값이 그리드에 채워졌습니다. 붙여넣은 값 적용 버튼을 누르면 수급계획에 반영됩니다.";
+    // Try full grid paste (4 rows x 12 cols) first
+    var isFullGrid = rows.length >= 4 && rows.every(function(r) {
+      return r.filter(Boolean).length >= 12;
+    });
+    if (isFullGrid) {
+      try {
+        var parsed = parsePlanPasteText(rawText);
+        fillPlanPasteGrid(parsed);
+        var status = document.getElementById("planPasteStatus");
+        if (status) {
+          status.textContent = "붙여넣기 완료. 값이 그리드에 채워졌습니다. 붙여넣은 값 적용 버튼을 누르면 수급계획에 반영됩니다.";
+        }
+        if (window.showToast) {
+          window.showToast("엑셀 값을 입력 그리드에 채웠습니다.", "success");
+        }
+        return;
+      } catch (_) {
+        // Fall through to cell-based paste
       }
-      if (window.showToast) {
-        window.showToast("엑셀 값을 입력 그리드에 채웠습니다.", "success");
+    }
+
+    // Cell-based paste: start from focused cell
+    var target = event.target;
+    var startRow = target.getAttribute("data-row");
+    var startMonthAttr = target.getAttribute("data-month");
+    if (!startRow || startMonthAttr === null) {
+      return;
+    }
+    var startRowIndex = PLAN_GRID_ROW_ORDER.indexOf(startRow);
+    var startMonth = parseInt(startMonthAttr, 10);
+    if (startRowIndex < 0 || isNaN(startMonth)) {
+      return;
+    }
+
+    var filledCount = 0;
+    for (var r = 0; r < rows.length; r++) {
+      var rowIndex = startRowIndex + r;
+      if (rowIndex >= PLAN_GRID_ROW_ORDER.length) break;
+      var rowKey = PLAN_GRID_ROW_ORDER[rowIndex];
+      for (var c = 0; c < rows[r].length; c++) {
+        var monthIndex = startMonth + c;
+        if (monthIndex > 11) break;
+        var cellValue = parseClipboardNumber(rows[r][c]);
+        if (cellValue !== null) {
+          var input = getPlanPasteCell(rowKey, monthIndex);
+          if (input) {
+            input.value = formatNumber(cellValue);
+            markPlanPasteCell(input);
+            filledCount++;
+          }
+        }
       }
-    } catch (error) {
-      if (window.showToast) {
-        window.showToast(error.message || "엑셀 형식을 읽지 못했습니다.", "error");
-      }
+    }
+
+    updatePlanPasteRowTotals();
+
+    var statusEl = document.getElementById("planPasteStatus");
+    if (statusEl) {
+      statusEl.textContent = filledCount + "개 셀에 값을 채웠습니다. 붙여넣은 값 적용 버튼을 누르면 수급계획에 반영됩니다.";
+    }
+    if (window.showToast) {
+      window.showToast(filledCount + "개 셀에 값을 붙여넣었습니다.", "success");
     }
   }
 
@@ -1785,11 +1850,9 @@ function runMainApp() {
     if (resetButton) {
       resetButton.addEventListener("click", resetPlanPasteInput);
     }
-    if (grid) {
-      grid.addEventListener("paste", handlePlanGridPaste);
-    }
 
     document.querySelectorAll(".plan-paste-cell").forEach((input) => {
+      input.addEventListener("paste", handlePlanCellPaste);
       input.addEventListener("focus", () => input.select());
       input.addEventListener("blur", () => {
         markPlanPasteCell(input);
