@@ -15,9 +15,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4';
 
 (async function () {
-  // ── Supabase 클라이언트 설정 ──
-  const SUPABASE_URL = 'https://YOUR_PROJECT.supabase.co';
-  const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY_HERE';
+  // ── Supabase 클라이언트 설정 (환경변수에서 읽기) ──
+  const SUPABASE_URL = window.SUPABASE_URL || 'https://YOUR_PROJECT.supabase.co';
+  const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || 'YOUR_ANON_KEY_HERE';
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
