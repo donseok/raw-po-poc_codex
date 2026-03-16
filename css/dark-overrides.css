@@ -21,6 +21,28 @@
   background: #2d2d55;
 }
 
+[data-theme="dark"] td {
+  border-bottom-color: #33334d;
+  color: var(--text);
+}
+
+[data-theme="dark"] .summary-row {
+  background: #2a2a5e !important;
+}
+
+[data-theme="dark"] .summary-row td {
+  color: #c5cae9;
+  background: #2a2a5e;
+}
+
+[data-theme="dark"] .mini-stat {
+  background: #252540;
+}
+
+[data-theme="dark"] .metric-pill {
+  background: #252540;
+}
+
 [data-theme="dark"] .plan-paste-grid thead th {
   background: #2a2a5e;
 }

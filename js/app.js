@@ -2744,7 +2744,7 @@ function runMainApp() {
         `
       )
       .join("") +
-      `<tr style="font-weight:bold;background:var(--bg-light,#f5f5f5);">
+      `<tr class="summary-row">
         <td>합계</td>
         <td class="text-right">${totalPlan ? formatNumber(totalPlan) : ""}</td>
         <td class="text-right">${totalActual ? formatNumber(totalActual) : ""}</td>

@@ -253,6 +253,16 @@ tr:hover {
   background: #e8eaf6;
 }
 
+.summary-row {
+  font-weight: bold;
+  background: var(--gray-100);
+}
+
+.summary-row td {
+  color: var(--primary-dark);
+  border-bottom: none;
+}
+
 .text-right {
   text-align: right;
 }
