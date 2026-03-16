@@ -1044,6 +1044,16 @@
       currentUser.role = role;
       currentUser.status = status;
     } else {
+      // Supabase: 신규 사용자는 대시보드에서 생성 안내
+      showToast(
+        "신규 사용자는 Supabase 대시보드에서 생성해주세요. " +
+        "1) 대시보드 Authentication > Users에서 계정 생성 후 " +
+        "2) SQL Editor에서 profiles 테이블에 사용자 정보를 추가해주세요.",
+        "warn"
+      );
+      return;
+
+      /* 기존 로컬 저장 방식 (마이그레이션 완료 후 제거)
       if (
         usersData.some(function (item) {
           return item.id === id;
@@ -1064,6 +1074,7 @@
         status: status,
         createdAt: new Date().toISOString()
       });
+      */
     }
 
     saveUsersData();

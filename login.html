@@ -322,8 +322,14 @@
     </div>
   </div>
 
-  <script src="js/storage.js"></script>
-  <script>
+  <script type="module">
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4';
+
+    // Supabase 클라이언트 초기화 (supabase-storage.js와 동일하게)
+    const SUPABASE_URL = 'https://YOUR_PROJECT.supabase.co';
+    const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY_HERE';
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
     if (sessionStorage.getItem("loggedInUser")) {
       location.href = "index.html";
     }
@@ -335,100 +341,108 @@
     const passwordToggle = document.getElementById("passwordToggle");
     const passwordToggleIcon = document.getElementById("passwordToggleIcon");
 
-    const fallbackUsers = [
-      {
-        id: "dongkuk1",
-        password: "1234",
-        name: "이돈석 팀장",
-        dept: "원료기획팀",
-        role: "admin",
-        status: "active"
-      },
-      {
-        id: "dongkuk2",
-        password: "1234",
-        name: "박영수 대리",
-        dept: "원료기획팀",
-        role: "user",
-        status: "active"
-      }
-    ];
-
-    function getRegisteredUsers() {
+    async function loginWithSupabase(username, password) {
       try {
-        var stored = window.appStorage ? window.appStorage.getSync("usersData") : undefined;
-        if (stored === undefined) {
-          var raw = localStorage.getItem("usersData");
-          if (!raw) return null;
-          stored = JSON.parse(raw);
+        const email = `${username}@dk.internal`;
+
+        // Supabase Auth에 로그인
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email,
+          password
+        });
+
+        if (authError) {
+          return {
+            success: false,
+            error: authError.message.includes("Invalid login credentials")
+              ? "아이디 또는 비밀번호가 올바르지 않습니다."
+              : authError.message
+          };
         }
-        return Array.isArray(stored.data) && stored.data.length ? stored.data : null;
-      } catch {
-        return null;
+
+        if (!authData.user) {
+          return {
+            success: false,
+            error: "인증 오류가 발생했습니다."
+          };
+        }
+
+        // profiles 테이블에서 사용자 정보 조회
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", authData.user.id)
+          .single();
+
+        if (profileError || !profile) {
+          // 프로필이 없으면 로그아웃
+          await supabase.auth.signOut();
+          return {
+            success: false,
+            error: "사용자 프로필을 찾을 수 없습니다. 관리자에게 문의하세요."
+          };
+        }
+
+        if (profile.status === "inactive") {
+          await supabase.auth.signOut();
+          return {
+            success: false,
+            error: "비활성화된 계정입니다. 관리자에게 문의하세요."
+          };
+        }
+
+        // sessionStorage에 사용자 정보 저장
+        const displayName = profile.position
+          ? `${profile.name} ${profile.position}`
+          : profile.name;
+
+        sessionStorage.setItem(
+          "loggedInUser",
+          JSON.stringify({
+            id: profile.app_id,
+            name: displayName,
+            dept: profile.dept || "원료기획팀",
+            role: profile.role || "user"
+          })
+        );
+
+        return { success: true };
+      } catch (err) {
+        console.error("Login error:", err);
+        return {
+          success: false,
+          error: "로그인 중 오류가 발생했습니다."
+        };
       }
     }
 
-    function findUser(userId, password) {
-      const registeredUsers = getRegisteredUsers();
-      const source = registeredUsers || fallbackUsers;
-      const user = source.find((item) => item.id === userId && item.password === password);
-      if (!user) {
-        return null;
-      }
-      if (user.status === "inactive") {
-        return { blocked: true };
-      }
-      const displayName = user.position ? `${user.name} ${user.position}` : user.name;
-      return {
-        id: user.id,
-        name: displayName,
-        dept: user.dept || "원료기획팀",
-        role: user.role || "user"
-      };
-    }
-
-    function loginUser(user) {
-      sessionStorage.setItem(
-        "loggedInUser",
-        JSON.stringify({
-          id: user.id,
-          name: user.name,
-          dept: user.dept,
-          role: user.role
-        })
-      );
-      location.href = "index.html";
-    }
-
-    function loginAsDemoUser() {
-      const demoUser = findUser("dongkuk1", "1234");
-      if (demoUser && !demoUser.blocked) {
-        loginUser(demoUser);
-        return;
-      }
-      errorBox.textContent = "기본 계정 정보를 확인할 수 없습니다.";
-      errorBox.classList.add("show");
-    }
-
-    form.addEventListener("submit", function (event) {
+    form.addEventListener("submit", async function (event) {
       event.preventDefault();
       const userId = document.getElementById("userId").value.trim().toLowerCase();
       const password = document.getElementById("password").value.trim();
-      const user = findUser(userId, password);
 
-      if (user && !user.blocked) {
-        loginUser(user);
+      const result = await loginWithSupabase(userId, password);
+
+      if (result.success) {
+        location.href = "index.html";
         return;
       }
 
-      errorBox.textContent = user && user.blocked
-        ? "비활성화된 계정입니다. 관리자에게 문의하세요."
-        : "아이디 또는 비밀번호가 올바르지 않습니다.";
+      errorBox.textContent = result.error;
       errorBox.classList.add("show");
     });
 
-    quickLoginBtn.addEventListener("click", loginAsDemoUser);
+    quickLoginBtn.addEventListener("click", async function () {
+      const result = await loginWithSupabase("dongkuk1", "1234");
+      if (result.success) {
+        location.href = "index.html";
+        return;
+      }
+      errorBox.textContent = result.error;
+      errorBox.classList.add("show");
+    });
 
+    // 비밀번호 토글
     passwordToggle.addEventListener("click", function () {
       const shouldShow = passwordInput.type === "password";
       passwordInput.type = shouldShow ? "text" : "password";

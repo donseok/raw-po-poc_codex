@@ -2363,10 +2363,16 @@
       .join("");
     selector.value = getSelectedYear();
 
-    selector.addEventListener("change", (event) => {
+    selector.addEventListener("change", async (event) => {
       state.selectedYear = event.target.value;
       _invalidateTxCache();
       state.rawPastePage = 0;
+
+      // Supabase: 연도별 거래 데이터 지연 로드
+      if (window.appStorage && window.appStorage.prefetchTransactionsForYear) {
+        await window.appStorage.prefetchTransactionsForYear(event.target.value);
+      }
+
       syncPlanPasteGridForYear();
       syncRawPasteInputForYear();
       setBanner();
@@ -3688,8 +3694,20 @@
 
     document.getElementById("exportBtn").addEventListener("click", () => exportDocx());
     document.getElementById("logoutBtn").addEventListener("click", () => {
-      sessionStorage.removeItem("loggedInUser");
-      location.href = "login.html";
+      // Supabase 로그아웃
+      if (window.appStorage && window.appStorage.supabaseClient) {
+        window.appStorage.supabaseClient.auth.signOut().then(() => {
+          sessionStorage.removeItem("loggedInUser");
+          location.href = "login.html";
+        }).catch(() => {
+          // 오프라인 등으로 Supabase 로그아웃 실패해도 계속 진행
+          sessionStorage.removeItem("loggedInUser");
+          location.href = "login.html";
+        });
+      } else {
+        sessionStorage.removeItem("loggedInUser");
+        location.href = "login.html";
+      }
     });
   }
 
@@ -4380,8 +4398,172 @@
     });
   }
 
+  // 마이그레이션 함수
+  window.startDataMigration = async function() {
+    const banner = document.querySelector("div[style*='ffc107']");
+    if (banner) banner.remove();
+
+    const migrationStatus = document.createElement("div");
+    migrationStatus.style.cssText =
+      "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border:1px solid #ccc;border-radius:8px;padding:24px;z-index:10001;min-width:300px;box-shadow:0 4px 12px rgba(0,0,0,0.15);";
+    migrationStatus.innerHTML = "<strong>데이터 업로드 중...</strong><p>잠시만 기다려주세요.</p>";
+    document.body.appendChild(migrationStatus);
+
+    try {
+      const supabase = window.appStorage.supabaseClient;
+      let uploaded = 0;
+      let total = 6; // noticesData, schedulesData, supplierAdminItems, gradeMacroMappings, planClipboardDataByYear, transactions
+
+      const updateStatus = (msg) => {
+        migrationStatus.innerHTML = `<strong>데이터 업로드 중...</strong><p>${msg} (${uploaded}/${total})</p>`;
+      };
+
+      // 1. gradeMacroMappings
+      const gradeMappings = state.gradeMappings || {};
+      if (Object.keys(gradeMappings).length > 0) {
+        updateStatus("등급 매핑");
+        await supabase
+          .from("grade_mappings")
+          .upsert({ id: 1, mappings: gradeMappings }, { onConflict: "id" });
+      }
+      uploaded++;
+
+      // 2. supplierAdminItems
+      const suppliers = (state.supplierAdminItems && state.supplierAdminItems.data) || [];
+      if (suppliers.length > 0) {
+        updateStatus("공급업체 정보");
+        await supabase
+          .from("supplier_admins")
+          .delete()
+          .neq("code", "");
+        await supabase.from("supplier_admins").insert(
+          suppliers.map((s) => ({
+            code: s.code,
+            name: s.name,
+            region: s.region,
+            owner: s.owner,
+            phone: s.phone,
+            monthly_capacity: s.monthlyCapacity || 0,
+            yearly_supply: s.yearlySupply || 0,
+            trust_grade: s.trustGrade || "B",
+            performance_rate: s.performanceRate || 0
+          }))
+        );
+      }
+      uploaded++;
+
+      // 3. planClipboardDataByYear
+      const planData = state.planClipboardDataByYear || {};
+      if (Object.keys(planData).length > 0) {
+        updateStatus("수급계획");
+        for (const [year, data] of Object.entries(planData)) {
+          await supabase.from("plan_data").upsert({
+            year,
+            pasted_at: data.pastedAt,
+            monthly: data.monthly
+          }, { onConflict: "year" });
+        }
+      }
+      uploaded++;
+
+      // 4. noticesData
+      const notices = (state.notices && state.notices.data) || [];
+      if (notices.length > 0) {
+        updateStatus("공지사항");
+        await supabase.from("notices").delete().neq("id", "");
+        await supabase.from("notices").insert(
+          notices.map((n) => ({
+            id: n.id,
+            title: n.title,
+            content: n.content,
+            author: n.author,
+            password: n.password,
+            pinned: n.pinned || false,
+            created_at: n.createdAt
+          }))
+        );
+      }
+      uploaded++;
+
+      // 5. schedulesData
+      const schedules = (state.schedules && state.schedules.data) || [];
+      if (schedules.length > 0) {
+        updateStatus("일정");
+        await supabase.from("schedules").delete().neq("id", "");
+        await supabase.from("schedules").insert(
+          schedules.map((s) => ({
+            id: s.id,
+            member: s.member,
+            type: s.type,
+            start_date: s.startDate,
+            end_date: s.endDate,
+            memo: s.memo
+          }))
+        );
+      }
+      uploaded++;
+
+      // 6. rawTransactionDataByYear
+      const transactions = state.rawTransactionsByYear || {};
+      if (Object.keys(transactions).length > 0) {
+        updateStatus("거래 데이터");
+        for (const [year, txList] of Object.entries(transactions)) {
+          if (Array.isArray(txList) && txList.length > 0) {
+            await supabase.from("transactions").delete().eq("year", Number(year));
+            const BATCH_SIZE = 5000;
+            for (let i = 0; i < txList.length; i += BATCH_SIZE) {
+              const batch = txList.slice(i, i + BATCH_SIZE).map((tx) => ({
+                year: Number(year),
+                date: tx.date,
+                month: tx.month,
+                supplier: tx.supplier,
+                detailed_grade: tx.detailedGrade,
+                macro: tx.macro || "기타",
+                unit_price: tx.unitPrice || 0,
+                amount: tx.amount || 0,
+                qty: tx.qty || 0
+              }));
+              await supabase.from("transactions").insert(batch, {
+                count: "estimated",
+                head: false
+              });
+            }
+          }
+        }
+      }
+      uploaded++;
+
+      // 완료
+      localStorage.setItem("__supabase_migrated", "1");
+      migrationStatus.innerHTML =
+        "<strong>✓ 데이터 업로드 완료!</strong><p>페이지가 새로고침됩니다.</p>";
+      setTimeout(() => {
+        location.reload();
+      }, 1500);
+    } catch (err) {
+      console.error("Migration error:", err);
+      migrationStatus.innerHTML =
+        "<strong>✗ 업로드 중 오류 발생</strong><p>" + err.message + "</p>" +
+        '<button onclick="this.parentElement.remove();" style="margin-top:12px;padding:6px 12px;background:#fff;border:1px solid #333;border-radius:4px;cursor:pointer;">닫기</button>';
+    }
+  };
+
   if (window.appStorage) {
-    window.appStorage.ready.then(function () { init(); });
+    window.appStorage.ready.then(function () {
+      init();
+
+      // Supabase 마이그레이션 배너 표시
+      if (window._supabaseMigrationPending && !localStorage.getItem("__supabase_migrated")) {
+        const migrationBanner = document.createElement("div");
+        migrationBanner.style.cssText =
+          "position:fixed;top:0;left:0;right:0;background:#ffc107;color:#000;padding:12px 16px;font-weight:bold;z-index:10000;text-align:center;";
+        migrationBanner.innerHTML =
+          '로컬에 저장된 데이터를 클라우드로 업로드하시겠습니까? ' +
+          '<button onclick="window.startDataMigration()" style="margin:0 8px;padding:6px 12px;background:#fff;border:1px solid #333;border-radius:4px;cursor:pointer;font-weight:bold;">업로드</button>' +
+          '<button onclick="this.parentElement.remove();localStorage.setItem(\'__supabase_migrated\',\'1\');" style="margin:0 8px;padding:6px 12px;background:#fff;border:1px solid #333;border-radius:4px;cursor:pointer;">나중에</button>';
+        document.body.prepend(migrationBanner);
+      }
+    });
   } else {
     init();
   }
