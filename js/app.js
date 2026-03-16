@@ -474,12 +474,15 @@ function runMainApp() {
   }
 
   function _deriveMonth(date, rawMonth) {
-    const m = Number(rawMonth);
-    if (m >= 1 && m <= 12) return m;
-    // month가 없거나 잘못된 경우 date에서 추출
+    // date에서 월 추출 우선 (DB month 컬럼이 잘못된 DEFAULT 값일 수 있음)
     const dateStr = String(date || "");
     const match = dateStr.match(/\d{4}[-\/.](\d{1,2})/);
-    return match ? Number(match[1]) : 0;
+    if (match) {
+      const fromDate = Number(match[1]);
+      if (fromDate >= 1 && fromDate <= 12) return fromDate;
+    }
+    const m = Number(rawMonth);
+    return (m >= 1 && m <= 12) ? m : 0;
   }
 
   function normalizeRawTransactions(payload) {

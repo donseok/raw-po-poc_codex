@@ -408,14 +408,18 @@ if (window.__supabaseConfigReady) {
           _cache.rawTransactionDataByYear || {};
         _cache.rawTransactionDataByYear[year] = (transactions || []).map(
           (tx) => {
-            let month = Number(tx.month);
-            if (!(month >= 1 && month <= 12) && tx.date) {
+            // date에서 월 추출 우선 (DB month 컬럼이 잘못된 DEFAULT 값일 수 있음)
+            let month = 0;
+            if (tx.date) {
               const m = String(tx.date).match(/\d{4}[-\/.](\d{1,2})/);
               if (m) month = Number(m[1]);
             }
+            if (!(month >= 1 && month <= 12)) {
+              month = Number(tx.month) || 0;
+            }
             return {
               date: tx.date,
-              month: month || 0,
+              month,
               supplier: tx.supplier,
               detailedGrade: tx.detailed_grade,
               macro: tx.macro,
