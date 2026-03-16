@@ -254,6 +254,7 @@
         }
       });
     }
+    return noticesData;
   }
 
   function saveNoticesData() {
@@ -833,9 +834,45 @@
     return result.length ? result : null;
   }
 
-  function loadUsersFromStorage() {
+  function mapProfileToUser(profile) {
+    return normalizeUser({
+      id: profile.app_id,
+      password: "",
+      name: profile.name,
+      dept: profile.dept,
+      position: profile.position,
+      email: profile.email || "",
+      phone: profile.phone || "",
+      role: profile.role,
+      status: profile.status,
+      createdAt: profile.created_at
+    });
+  }
+
+  async function loadUsersFromStorage() {
+    var supabase = window.appStorage && window.appStorage.supabaseClient;
+    if (supabase) {
+      try {
+        var response = await supabase
+          .from("profiles")
+          .select("*")
+          .order("created_at", { ascending: false });
+        if (!response.error && Array.isArray(response.data) && response.data.length) {
+          usersData = response.data
+            .map(mapProfileToUser)
+            .filter(function (item) {
+              return !!item;
+            });
+          return usersData;
+        }
+      } catch (error) {
+        console.warn("Failed to load users from profiles:", error);
+      }
+    }
+
     var saved = readStoredData(STORAGE_KEYS.users, normalizeUsersData);
     usersData = saved || cloneData(DEFAULT_USERS);
+    return usersData;
   }
 
   function saveUsersData() {
@@ -1120,18 +1157,19 @@
     showToast("사용자가 삭제되었습니다.", "success");
   }
 
-  function initAdminFeatures() {
+  async function initAdminFeatures() {
     loadNoticesFromStorage();
     loadSchedulesFromStorage();
-    loadUsersFromStorage();
+    await loadUsersFromStorage();
   }
 
+  var adminFeaturesReady;
   if (window.appStorage) {
-    window.appStorage.ready.then(function () {
-      initAdminFeatures();
+    adminFeaturesReady = window.appStorage.ready.then(function () {
+      return initAdminFeatures();
     });
   } else {
-    initAdminFeatures();
+    adminFeaturesReady = Promise.resolve(initAdminFeatures());
   }
 
   window.showModal = showModal;
@@ -1155,10 +1193,15 @@
   window.editUser = editUser;
   window.deleteUser = deleteUser;
   window.adminFeatures = {
+    ready: adminFeaturesReady,
     renderNotices: renderNotices,
     renderCalendar: renderCalendar,
     renderUsers: renderUsers,
+    loadNoticesFromStorage: loadNoticesFromStorage,
     loadUsersFromStorage: loadUsersFromStorage,
+    getUsers: function () {
+      return cloneData(usersData);
+    },
     getDefaultUsers: function () {
       return cloneData(DEFAULT_USERS);
     }
