@@ -276,6 +276,11 @@
     [data-theme="dark"] .login-theme-toggle .icon-moon { display: none; }
     [data-theme="dark"] .login-theme-toggle .icon-sun { display: block; }
   </style>
+  <script>
+    // Supabase environment variables (set from Vercel env or defaults)
+    window.SUPABASE_URL = window.SUPABASE_URL || 'https://YOUR_PROJECT.supabase.co';
+    window.SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || 'YOUR_ANON_KEY_HERE';
+  </script>
 </head>
 <body>
   <button class="login-theme-toggle" id="loginThemeToggle" type="button" aria-label="다크 모드 전환">
@@ -325,9 +330,14 @@
   <script type="module">
     import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4';
 
-    // Supabase 클라이언트 초기화 (supabase-storage.js와 동일하게)
-    const SUPABASE_URL = 'https://YOUR_PROJECT.supabase.co';
-    const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY_HERE';
+    // Supabase 클라이언트 초기화 (환경변수에서 읽기)
+    const SUPABASE_URL = window.SUPABASE_URL;
+    const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY;
+
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY || SUPABASE_URL.includes('YOUR_PROJECT')) {
+      console.error('❌ Supabase credentials not configured. Please set environment variables.');
+    }
+
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     if (sessionStorage.getItem("loggedInUser")) {
