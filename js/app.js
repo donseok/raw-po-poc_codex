@@ -2406,6 +2406,10 @@ function runMainApp() {
     renderMappingGroups();
     syncRawPasteInputForYear();
 
+    // 브라우저 자동완성 방지: 입력필드 초기화
+    const gradeInput = document.getElementById("mappingGradeName");
+    if (gradeInput) gradeInput.value = "";
+
     const addMappingButton = document.getElementById("addMappingBtn");
     const applyRawButton = document.getElementById("applyRawPasteBtn");
     const saveRawButton = document.getElementById("saveRawToDBBtn");
