@@ -1516,7 +1516,22 @@ function runMainApp() {
   }
 
   async function clearPlanOverride() {
-    delete state.planOverrides[getSelectedYear()];
+    const year = getSelectedYear();
+    delete state.planOverrides[year];
+
+    // Supabase에서 해당 연도 행 직접 DELETE
+    if (window.appStorage && window.appStorage.supabaseClient) {
+      try {
+        await window.appStorage.supabaseClient
+          .from("plan_data")
+          .delete()
+          .eq("year", year);
+      } catch (err) {
+        console.error("clearPlanOverride: Supabase delete failed", err);
+      }
+    }
+
+    // 로컬 저장소 동기화
     if (Object.keys(state.planOverrides).length) {
       if (window.appStorage) {
         await window.appStorage.set(PLAN_PASTE_STORAGE_KEY, state.planOverrides);
@@ -1695,7 +1710,7 @@ function runMainApp() {
       state._planAppliedButNotSaved = false;
 
       if (window.showToast) {
-        window.showToast("저장되었습니다.", "success");
+        window.showToast("저장 되었습니다.", "success");
       }
     } catch (error) {
       console.error("Plan DB save error:", error);
@@ -1719,7 +1734,7 @@ function runMainApp() {
       state._planAppliedButNotSaved = false;
 
       if (window.showToast) {
-        window.showToast("수급계획을 기본 데이터로 복원하고 데이터베이스에 저장했습니다.", "success");
+        window.showToast("수급계획을 기본 데이터로 복원하고 데이터베이스에서 삭제했습니다.", "success");
       }
     } catch (error) {
       console.error("Plan paste reset error:", error);
