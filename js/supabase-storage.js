@@ -416,10 +416,11 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4';
       _cache[key] = val;
       _idbPut(key, val);
 
-      // Supabase에 비동기 저장
+      // Supabase에 비동기 저장 (Promise 반환)
       if (_userId && !_offlineMode) {
-        this._saveToSupabase(key, val).catch((err) => {
+        return this._saveToSupabase(key, val).catch((err) => {
           console.error(`appStorage: failed to save ${key}`, err);
+          throw err;
         });
       }
     },
@@ -511,35 +512,60 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4';
         if (key === "planClipboardDataByYear" && typeof val === "object") {
           const planList = _toDBFormat(key, val);
           for (const plan of planList) {
-            await supabase
+            const { error } = await supabase
               .from("plan_data")
               .upsert({
                 user_id: _userId,
                 year: plan.year,
                 pasted_at: plan.pasted_at,
                 monthly: plan.monthly
-              }, { onConflict: "user_id,year" });
+              }, { onConflict: "uq_user_year" });
+            if (error) {
+              console.error(`appStorage: failed to upsert plan_data for year ${plan.year}`, error);
+              throw error;
+            }
           }
           return;
         }
 
         if (key === "rawTransactionDataByYear" && typeof val === "object") {
           const txList = _toDBFormat(key, val);
-          for (const tx of txList) {
+
+          // 해당 연도의 모든 거래 기록 삭제 후 새로 insert
+          // (transactions 테이블에는 unique constraint가 없으므로)
+          if (txList.length > 0) {
+            const year = txList[0].year;
+
+            // 같은 연도의 기존 데이터 삭제
             await supabase
               .from("transactions")
-              .upsert({
-                user_id: _userId,
-                year: tx.year,
-                date: tx.date,
-                month: tx.month,
-                supplier: tx.supplier,
-                detailed_grade: tx.detailed_grade,
-                macro: tx.macro,
-                unit_price: tx.unit_price,
-                amount: tx.amount,
-                qty: tx.qty
-              });
+              .delete()
+              .eq("user_id", _userId)
+              .eq("year", year);
+
+            // 새로운 데이터 insert (batch로 처리)
+            const batchSize = 1000;
+            for (let i = 0; i < txList.length; i += batchSize) {
+              const batch = txList.slice(i, i + batchSize);
+              const { error } = await supabase
+                .from("transactions")
+                .insert(batch.map(tx => ({
+                  user_id: _userId,
+                  year: tx.year,
+                  date: tx.date,
+                  month: tx.month,
+                  supplier: tx.supplier,
+                  detailed_grade: tx.detailed_grade,
+                  macro: tx.macro,
+                  unit_price: tx.unit_price,
+                  amount: tx.amount,
+                  qty: tx.qty
+                })));
+              if (error) {
+                console.error(`appStorage: failed to insert transactions batch`, error);
+                throw error;
+              }
+            }
           }
           return;
         }

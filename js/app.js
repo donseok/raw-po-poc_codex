@@ -508,10 +508,10 @@ function runMainApp() {
     }
   }
 
-  function saveRawTransactions() {
+  async function saveRawTransactions() {
     const data = state.rawTransactionsByYear || {};
     if (window.appStorage) {
-      window.appStorage.set(RAW_TRANSACTION_STORAGE_KEY, data);
+      await window.appStorage.set(RAW_TRANSACTION_STORAGE_KEY, data);
     } else {
       try {
         localStorage.setItem(RAW_TRANSACTION_STORAGE_KEY, JSON.stringify(data));
@@ -1497,27 +1497,27 @@ function runMainApp() {
     }
   }
 
-  function savePlanOverride(dataset) {
+  async function savePlanOverride(dataset) {
     state.planOverrides[getSelectedYear()] = dataset;
     if (window.appStorage) {
-      window.appStorage.set(PLAN_PASTE_STORAGE_KEY, state.planOverrides);
+      await window.appStorage.set(PLAN_PASTE_STORAGE_KEY, state.planOverrides);
     } else {
       localStorage.setItem(PLAN_PASTE_STORAGE_KEY, JSON.stringify(state.planOverrides));
     }
   }
 
-  function clearPlanOverride() {
+  async function clearPlanOverride() {
     delete state.planOverrides[getSelectedYear()];
     if (Object.keys(state.planOverrides).length) {
       if (window.appStorage) {
-        window.appStorage.set(PLAN_PASTE_STORAGE_KEY, state.planOverrides);
+        await window.appStorage.set(PLAN_PASTE_STORAGE_KEY, state.planOverrides);
       } else {
         localStorage.setItem(PLAN_PASTE_STORAGE_KEY, JSON.stringify(state.planOverrides));
       }
       return;
     }
     if (window.appStorage) {
-      window.appStorage.remove(PLAN_PASTE_STORAGE_KEY);
+      await window.appStorage.remove(PLAN_PASTE_STORAGE_KEY);
     } else {
       localStorage.removeItem(PLAN_PASTE_STORAGE_KEY);
     }
@@ -1644,7 +1644,7 @@ function runMainApp() {
       `${getSelectedYearLabel()} 최근 붙여넣기 적용: ${pastedAt.toLocaleString("ko-KR")} | 인천/포항 계획·실적 4개 행을 월별 합산해 반영했습니다.`;
   }
 
-  function applyPlanPasteInput() {
+  async function applyPlanPasteInput() {
     const gridDataset = readPlanPasteGrid();
     if (gridDataset.error) {
       if (window.showToast) {
@@ -1653,22 +1653,51 @@ function runMainApp() {
       return;
     }
 
-    savePlanOverride(gridDataset);
-    fillPlanPasteGrid(gridDataset);
-    updatePlanPasteStatus();
-    renderPlan();
-    if (window.showToast) {
-      window.showToast("그리드의 월별 계획/실적을 수급계획에 반영했습니다.", "success");
+    try {
+      // 저장 중 메시지
+      if (window.showToast) {
+        window.showToast("데이터를 저장 중입니다...", "info");
+      }
+
+      // Supabase에 저장 (완료 대기)
+      await savePlanOverride(gridDataset);
+
+      // UI 업데이트
+      fillPlanPasteGrid(gridDataset);
+      updatePlanPasteStatus();
+      renderPlan();
+
+      // 성공 메시지
+      if (window.showToast) {
+        window.showToast("✓ 월별 계획/실적을 수급계획에 반영하고 데이터베이스에 저장했습니다.", "success");
+      }
+    } catch (error) {
+      console.error("Plan paste apply error:", error);
+      if (window.showToast) {
+        window.showToast("데이터 저장 중 오류가 발생했습니다: " + (error.message || "Unknown error"), "error");
+      }
     }
   }
 
-  function resetPlanPasteInput() {
-    clearPlanPasteGrid();
-    clearPlanOverride();
-    updatePlanPasteStatus();
-    renderPlan();
-    if (window.showToast) {
-      window.showToast("수급계획을 기본 데이터로 복원했습니다.", "success");
+  async function resetPlanPasteInput() {
+    try {
+      if (window.showToast) {
+        window.showToast("기본 데이터로 복원 중입니다...", "info");
+      }
+
+      await clearPlanOverride();
+      clearPlanPasteGrid();
+      updatePlanPasteStatus();
+      renderPlan();
+
+      if (window.showToast) {
+        window.showToast("✓ 수급계획을 기본 데이터로 복원하고 데이터베이스에 저장했습니다.", "success");
+      }
+    } catch (error) {
+      console.error("Plan paste reset error:", error);
+      if (window.showToast) {
+        window.showToast("데이터 저장 중 오류가 발생했습니다: " + (error.message || "Unknown error"), "error");
+      }
     }
   }
 
@@ -2145,14 +2174,19 @@ function runMainApp() {
         parseRawTransactionTextAsync(rawText, (progress) => {
           const pct = Math.round(progress * 100);
           if (pct % 20 === 0) window.showToast?.(`처리 중... ${pct}%`, "info");
-        }).then((parsed) => {
+        }).then(async (parsed) => {
           state.rawTransactionsByYear[getSelectedYear()] = parsed;
           _invalidateTxCache();
-          saveRawTransactions();
+          try {
+            await saveRawTransactions();
+            window.showToast?.(`✓ 원본 실적 데이터 ${formatNumber(parsed.length)}건을 반영하고 데이터베이스에 저장했습니다.`, "success");
+          } catch (saveError) {
+            window.showToast?.(`데이터 저장 중 오류: ${saveError.message || "Unknown error"}`, "error");
+            console.error("Save error:", saveError);
+          }
           syncRawPasteInputForYear();
           updateRawPasteStatus();
           renderActiveTab(document.querySelector(".tab-content.active")?.id.replace("tab-", "") || "plan");
-          window.showToast?.(`원본 실적 데이터 ${formatNumber(parsed.length)}건을 반영했습니다.`, "success");
         }).catch((error) => {
           window.showToast?.(error.message || "원본 실적 데이터를 읽지 못했습니다.", "error");
         });
@@ -2160,11 +2194,18 @@ function runMainApp() {
         const parsed = parseRawTransactionText(rawText);
         state.rawTransactionsByYear[getSelectedYear()] = parsed;
         _invalidateTxCache();
-        saveRawTransactions();
-        syncRawPasteInputForYear();
-        updateRawPasteStatus();
-        renderActiveTab(document.querySelector(".tab-content.active")?.id.replace("tab-", "") || "plan");
-        window.showToast?.("원본 실적 데이터를 반영했습니다.", "success");
+        (async () => {
+          try {
+            await saveRawTransactions();
+            window.showToast?.(`✓ 원본 실적 데이터를 반영하고 데이터베이스에 저장했습니다.`, "success");
+          } catch (saveError) {
+            window.showToast?.(`데이터 저장 중 오류: ${saveError.message || "Unknown error"}`, "error");
+            console.error("Save error:", saveError);
+          }
+          syncRawPasteInputForYear();
+          updateRawPasteStatus();
+          renderActiveTab(document.querySelector(".tab-content.active")?.id.replace("tab-", "") || "plan");
+        })();
       }
     } catch (error) {
       window.showToast?.(error.message || "원본 실적 데이터를 읽지 못했습니다.", "error");
@@ -2174,11 +2215,19 @@ function runMainApp() {
   function resetRawPasteInput() {
     delete state.rawTransactionsByYear[getSelectedYear()];
     _invalidateTxCache();
-    saveRawTransactions();
-    state.rawPastePage = 0;
-    syncRawPasteInputForYear();
-    renderActiveTab(document.querySelector(".tab-content.active")?.id.replace("tab-", "") || "plan");
-    window.showToast?.("선택 연도의 원본 실적 데이터를 초기화했습니다.", "success");
+    window.showToast?.("데이터를 초기화 중입니다...", "info");
+    (async () => {
+      try {
+        await saveRawTransactions();
+        window.showToast?.("✓ 선택 연도의 원본 실적 데이터를 초기화하고 데이터베이스에 저장했습니다.", "success");
+      } catch (error) {
+        window.showToast?.(`데이터 저장 중 오류: ${error.message || "Unknown error"}`, "error");
+        console.error("Save error:", error);
+      }
+      state.rawPastePage = 0;
+      syncRawPasteInputForYear();
+      renderActiveTab(document.querySelector(".tab-content.active")?.id.replace("tab-", "") || "plan");
+    })();
   }
 
   function setupMasterData() {
