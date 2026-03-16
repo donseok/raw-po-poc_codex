@@ -338,8 +338,21 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4';
 
       console.log("appStorage: Supabase prefetch complete");
     } catch (err) {
-      console.error("appStorage: Supabase prefetch error", err);
+      console.error("appStorage: Supabase prefetch error, falling back to IndexedDB", err);
       _offlineMode = true;
+
+      // IndexedDB 폴백: 모든 데이터를 캐시에 로드
+      if (_db) {
+        try {
+          const allRecords = await _readAllFromIDB(_db);
+          for (const record of allRecords) {
+            _cache[record.key] = record.value;
+          }
+          console.log("appStorage: IndexedDB fallback loaded", allRecords.length, "records");
+        } catch (idbErr) {
+          console.error("appStorage: IndexedDB fallback also failed", idbErr);
+        }
+      }
     }
 
     _readyResolve();
@@ -404,7 +417,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4';
       _idbPut(key, val);
 
       // Supabase에 비동기 저장
-      if (!_userId || !_offlineMode) {
+      if (_userId && !_offlineMode) {
         this._saveToSupabase(key, val).catch((err) => {
           console.error(`appStorage: failed to save ${key}`, err);
         });
