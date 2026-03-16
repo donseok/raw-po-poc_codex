@@ -11,7 +11,7 @@
   if (loggedInUser && window.appStorage?.setUserId) {
     try {
       const userInfo = JSON.parse(loggedInUser);
-      await window.appStorage.setUserId(userInfo.id);
+      await window.appStorage.setUserId(userInfo.uid || userInfo.id);
     } catch (e) {
       console.warn("Failed to parse loggedInUser:", e);
     }

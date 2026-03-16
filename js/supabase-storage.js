@@ -564,7 +564,7 @@ if (window.__supabaseConfigReady) {
                 year: plan.year,
                 pasted_at: plan.pasted_at,
                 monthly: plan.monthly
-              }, { onConflict: "uq_user_year" });
+              }, { onConflict: "year" });
             if (error) {
               console.error(`appStorage: failed to upsert plan_data for year ${plan.year}`, error);
               throw error;

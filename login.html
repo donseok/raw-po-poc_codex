@@ -462,6 +462,7 @@
           "loggedInUser",
           JSON.stringify({
             id: profile.app_id,
+            uid: authData.user.id,
             name: displayName,
             dept: profile.dept || "원료기획팀",
             role: profile.role || "user"
