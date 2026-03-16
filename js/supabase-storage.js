@@ -346,24 +346,46 @@ if (window.__supabaseConfigReady) {
         );
       }
 
-      // 6. 거래 데이터 — 현재 연도 + IDB에 캐시된 연도 로드
+      // 6. 거래 데이터 — 모든 연도 한 번에 로드
       try {
-        const currentYear = new Date().getFullYear();
-        const yearsToLoad = new Set([String(currentYear)]);
+        const { data: allTx, error: txErr } = await supabase
+          .from("transactions")
+          .select("*")
+          .eq("user_id", _userId)
+          .order("date", { ascending: true });
 
-        // IDB 캐시에 이미 있는 연도도 Supabase에서 최신화
-        const idbTx = _cache.rawTransactionDataByYear;
-        if (idbTx && typeof idbTx === "object") {
-          for (const y of Object.keys(idbTx)) {
-            yearsToLoad.add(String(y));
+        if (!txErr && Array.isArray(allTx)) {
+          _cache.rawTransactionDataByYear = {};
+          for (const tx of allTx) {
+            const year = String(tx.year);
+            let month = 0;
+            if (tx.date) {
+              const m = String(tx.date).match(/\d{4}[-\/.](\d{1,2})/);
+              if (m) month = Number(m[1]);
+            }
+            if (!(month >= 1 && month <= 12)) {
+              month = Number(tx.month) || 0;
+            }
+            if (!_cache.rawTransactionDataByYear[year]) {
+              _cache.rawTransactionDataByYear[year] = [];
+            }
+            _cache.rawTransactionDataByYear[year].push({
+              date: tx.date,
+              month,
+              supplier: tx.supplier,
+              detailedGrade: tx.detailed_grade,
+              macro: tx.macro,
+              unitPrice: tx.unit_price,
+              amount: tx.amount,
+              qty: tx.qty
+            });
+            // txCache도 채워서 lazy-load 중복 방지
+            if (!_txCache[year]) _txCache[year] = [];
+            _txCache[year].push(tx);
           }
         }
-
-        for (const year of yearsToLoad) {
-          await _prefetchTransactionsForYear(year);
-        }
       } catch (txErr) {
-        console.warn("appStorage: transaction prefetch partial failure", txErr);
+        console.warn("appStorage: transaction prefetch failure", txErr);
       }
 
       console.log("appStorage: Supabase prefetch complete");
