@@ -407,16 +407,23 @@ if (window.__supabaseConfigReady) {
         _cache.rawTransactionDataByYear =
           _cache.rawTransactionDataByYear || {};
         _cache.rawTransactionDataByYear[year] = (transactions || []).map(
-          (tx) => ({
-            date: tx.date,
-            month: tx.month,
-            supplier: tx.supplier,
-            detailedGrade: tx.detailed_grade,
-            macro: tx.macro,
-            unitPrice: tx.unit_price,
-            amount: tx.amount,
-            qty: tx.qty
-          })
+          (tx) => {
+            let month = Number(tx.month);
+            if (!(month >= 1 && month <= 12) && tx.date) {
+              const m = String(tx.date).match(/\d{4}[-\/.](\d{1,2})/);
+              if (m) month = Number(m[1]);
+            }
+            return {
+              date: tx.date,
+              month: month || 0,
+              supplier: tx.supplier,
+              detailedGrade: tx.detailed_grade,
+              macro: tx.macro,
+              unitPrice: tx.unit_price,
+              amount: tx.amount,
+              qty: tx.qty
+            };
+          }
         );
       }
     } catch (err) {

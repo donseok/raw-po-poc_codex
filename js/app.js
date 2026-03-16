@@ -473,6 +473,15 @@ function runMainApp() {
     });
   }
 
+  function _deriveMonth(date, rawMonth) {
+    const m = Number(rawMonth);
+    if (m >= 1 && m <= 12) return m;
+    // month가 없거나 잘못된 경우 date에서 추출
+    const dateStr = String(date || "");
+    const match = dateStr.match(/\d{4}[-\/.](\d{1,2})/);
+    return match ? Number(match[1]) : 0;
+  }
+
   function normalizeRawTransactions(payload) {
     if (!Array.isArray(payload)) {
       return [];
@@ -481,7 +490,7 @@ function runMainApp() {
     for (let i = 0, len = payload.length; i < len; i++) {
       const item = payload[i];
       const date = String(item.date || "");
-      const month = Number(item.month);
+      const month = _deriveMonth(date, item.month);
       const supplier = String(item.supplier || "").trim();
       const detailedGrade = String(item.detailedGrade || "").trim();
       if (!date || !supplier || !detailedGrade || month < 1 || month > 12) continue;
@@ -2497,6 +2506,12 @@ function runMainApp() {
   }
 
   function readStoredUsers() {
+    if (window.adminFeatures?.getUsers) {
+      const users = window.adminFeatures.getUsers();
+      if (Array.isArray(users) && users.length) {
+        return users;
+      }
+    }
     try {
       const stored = window.appStorage ? window.appStorage.getSync("usersData") : undefined;
       const parsed = stored !== undefined ? stored : (() => {
@@ -3441,15 +3456,28 @@ function runMainApp() {
     }
     if (tabName === "notice") {
       if (window.adminFeatures) {
-        window.adminFeatures.renderNotices();
-        window.adminFeatures.renderCalendar();
+        Promise.resolve(window.adminFeatures.ready)
+          .then(function() {
+            return window.adminFeatures.loadNoticesFromStorage?.();
+          })
+          .then(function() {
+            window.adminFeatures.renderNotices();
+            window.adminFeatures.renderCalendar();
+          });
       }
       return;
     }
     if (tabName === "user") {
       if (window.adminFeatures) {
-        window.adminFeatures.loadUsersFromStorage();
-        window.adminFeatures.renderUsers();
+        Promise.resolve(window.adminFeatures.ready)
+          .then(function() {
+            return window.adminFeatures.loadUsersFromStorage();
+          })
+          .then(function() {
+            window.adminFeatures.renderUsers();
+            setDateAndUser();
+          });
+        return;
       }
       setDateAndUser();
     }
