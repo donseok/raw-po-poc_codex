@@ -12,16 +12,30 @@
   <script>
     // Supabase config fetch — 결과를 글로벌 Promise로 저장하여 모듈에서 await 가능
     window.__supabaseConfigReady = (async function() {
+      // 1차: Vercel serverless API
       try {
         var res = await fetch('/api/config');
         var config = await res.json();
-        window.SUPABASE_URL = config.SUPABASE_URL;
-        window.SUPABASE_ANON_KEY = config.SUPABASE_ANON_KEY;
-      } catch (e) {
-        console.warn('Failed to fetch config, using defaults');
-        window.SUPABASE_URL = window.SUPABASE_URL || '';
-        window.SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || '';
-      }
+        if (config.SUPABASE_URL && config.SUPABASE_ANON_KEY) {
+          window.SUPABASE_URL = config.SUPABASE_URL;
+          window.SUPABASE_ANON_KEY = config.SUPABASE_ANON_KEY;
+          return;
+        }
+      } catch (e) { /* Vercel API 없음 — 로컬 개발 환경 */ }
+      // 2차: 로컬 config.json 폴백 (로컬 개발용, .gitignore에 추가 권장)
+      try {
+        var res2 = await fetch('/config.json');
+        var config2 = await res2.json();
+        if (config2.SUPABASE_URL && config2.SUPABASE_ANON_KEY) {
+          window.SUPABASE_URL = config2.SUPABASE_URL;
+          window.SUPABASE_ANON_KEY = config2.SUPABASE_ANON_KEY;
+          console.log('Supabase config loaded from config.json');
+          return;
+        }
+      } catch (e2) { /* config.json 없음 */ }
+      console.warn('Supabase config not found — offline mode');
+      window.SUPABASE_URL = window.SUPABASE_URL || '';
+      window.SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || '';
     })();
     // appStorage 모듈 로딩 완료 시그널 (supabase-storage.js가 resolve)
     window.__appStorageReadyResolve = null;

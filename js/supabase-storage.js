@@ -38,6 +38,10 @@ if (window.__supabaseConfigReady) {
   let _db = null;
   let _offlineMode = !supabase;
   let _userId = null;
+  let _appId = null; // 앱 사용자 ID (예: "dongkuk1") — user_id 불일치 시 폴백용
+  let _effectiveUserId = null; // 실제 DB 쿼리에 사용되는 user_id (prefetch에서 자동 감지)
+  /** DB 쿼리에 사용할 user_id 반환 */
+  function _dbUid() { return _effectiveUserId || _userId; }
   let _readyResolve;
   const _readyPromise = new Promise((resolve) => {
     _readyResolve = resolve;
@@ -294,11 +298,32 @@ if (window.__supabaseConfigReady) {
     }
 
     try {
+      // 0. user_id 자동 감지: _userId(UUID)로 조회 → 0건이면 _appId("dongkuk1")로 재시도
+      _effectiveUserId = _userId;
+      if (_appId && _appId !== _userId) {
+        const { count: c1 } = await supabase
+          .from("transactions")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", _userId);
+        if (!c1 || c1 === 0) {
+          const { count: c2 } = await supabase
+            .from("transactions")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", _appId);
+          if (c2 && c2 > 0) {
+            _effectiveUserId = _appId;
+            console.log(`appStorage: user_id 폴백 — ${_userId} → ${_appId} (${c2}건 발견)`);
+          }
+        } else {
+          console.log(`appStorage: user_id=${_userId} 에서 ${c1}건 발견`);
+        }
+      }
+
       // 1. notices
       const { data: notices, error: noticesErr } = await supabase
         .from("notices")
         .select("*")
-        .eq("user_id", _userId);
+        .eq("user_id", _effectiveUserId);
       if (!noticesErr) {
         _cache.noticesData = _toStorageFormat("noticesData", notices);
       }
@@ -307,7 +332,7 @@ if (window.__supabaseConfigReady) {
       const { data: schedules, error: schedulesErr } = await supabase
         .from("schedules")
         .select("*")
-        .eq("user_id", _userId);
+        .eq("user_id", _effectiveUserId);
       if (!schedulesErr) {
         _cache.schedulesData = _toStorageFormat("schedulesData", schedules);
       }
@@ -316,7 +341,7 @@ if (window.__supabaseConfigReady) {
       const { data: suppliers, error: suppliersErr } = await supabase
         .from("supplier_admins")
         .select("*")
-        .eq("user_id", _userId);
+        .eq("user_id", _effectiveUserId);
       if (!suppliersErr) {
         _cache.supplierAdminItems = _toStorageFormat(
           "supplierAdminItems",
@@ -328,7 +353,7 @@ if (window.__supabaseConfigReady) {
       const { data: gradeMappings, error: gradeMappingsErr } = await supabase
         .from("grade_mappings")
         .select("mappings")
-        .eq("user_id", _userId)
+        .eq("user_id", _effectiveUserId)
         .single();
       if (!gradeMappingsErr && gradeMappings) {
         _cache.gradeMacroMappings = gradeMappings.mappings || {};
@@ -338,7 +363,7 @@ if (window.__supabaseConfigReady) {
       const { data: planData, error: planDataErr } = await supabase
         .from("plan_data")
         .select("*")
-        .eq("user_id", _userId);
+        .eq("user_id", _effectiveUserId);
       if (!planDataErr) {
         _cache.planClipboardDataByYear = _toStorageFormat(
           "planClipboardDataByYear",
@@ -346,15 +371,28 @@ if (window.__supabaseConfigReady) {
         );
       }
 
-      // 6. 거래 데이터 — 모든 연도 한 번에 로드
+      // 6. 거래 데이터 — 모든 연도 한 번에 로드 (1000행 제한 대응 페이지네이션)
       try {
-        const { data: allTx, error: txErr } = await supabase
-          .from("transactions")
-          .select("*")
-          .eq("user_id", _userId)
-          .order("date", { ascending: true });
+        // 페이지네이션으로 모든 행 로드 (Supabase 기본 1000행 제한 우회)
+        const allTx = [];
+        let from = 0;
+        const batchSize = 1000;
+        while (true) {
+          const { data, error } = await supabase
+            .from("transactions")
+            .select("*")
+            .eq("user_id", _effectiveUserId)
+            .order("date", { ascending: true })
+            .range(from, from + batchSize - 1);
+          if (error) { console.warn("appStorage: tx fetch error", error); break; }
+          if (!data || data.length === 0) break;
+          allTx.push(...data);
+          if (data.length < batchSize) break;
+          from += batchSize;
+        }
+        console.log(`appStorage: transactions loaded ${allTx.length} rows (user_id=${_effectiveUserId})`);
 
-        if (!txErr && Array.isArray(allTx)) {
+        if (allTx.length > 0) {
           _cache.rawTransactionDataByYear = {};
           for (const tx of allTx) {
             const year = String(tx.year);
@@ -379,7 +417,6 @@ if (window.__supabaseConfigReady) {
               amount: tx.amount,
               qty: tx.qty
             });
-            // txCache도 채워서 lazy-load 중복 방지
             if (!_txCache[year]) _txCache[year] = [];
             _txCache[year].push(tx);
           }
@@ -410,48 +447,58 @@ if (window.__supabaseConfigReady) {
     _readyResolve();
   }
 
-  // ── Lazy-load transactions by year ──
+  // ── Lazy-load transactions by year (페이지네이션 포함) ──
   async function _prefetchTransactionsForYear(year) {
     if (!_userId || _txCache[year] || _offlineMode) {
       return;
     }
 
-    try {
-      const { data: transactions, error } = await supabase
-        .from("transactions")
-        .select("*")
-        .eq("user_id", _userId)
-        .eq("year", Number(year))
-        .order("date", { ascending: true });
+    // prefetch에서 감지된 effectiveUserId 사용 (없으면 _userId 폴백)
+    const uid = _effectiveUserId || _userId;
 
-      if (!error) {
-        _txCache[year] = transactions || [];
-        _cache.rawTransactionDataByYear =
-          _cache.rawTransactionDataByYear || {};
-        _cache.rawTransactionDataByYear[year] = (transactions || []).map(
-          (tx) => {
-            // date에서 월 추출 우선 (DB month 컬럼이 잘못된 DEFAULT 값일 수 있음)
-            let month = 0;
-            if (tx.date) {
-              const m = String(tx.date).match(/\d{4}[-\/.](\d{1,2})/);
-              if (m) month = Number(m[1]);
-            }
-            if (!(month >= 1 && month <= 12)) {
-              month = Number(tx.month) || 0;
-            }
-            return {
-              date: tx.date,
-              month,
-              supplier: tx.supplier,
-              detailedGrade: tx.detailed_grade,
-              macro: tx.macro,
-              unitPrice: tx.unit_price,
-              amount: tx.amount,
-              qty: tx.qty
-            };
-          }
-        );
+    try {
+      const transactions = [];
+      let from = 0;
+      const batchSize = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from("transactions")
+          .select("*")
+          .eq("user_id", uid)
+          .eq("year", Number(year))
+          .order("date", { ascending: true })
+          .range(from, from + batchSize - 1);
+        if (error || !data || data.length === 0) break;
+        transactions.push(...data);
+        if (data.length < batchSize) break;
+        from += batchSize;
       }
+
+      _txCache[year] = transactions;
+      _cache.rawTransactionDataByYear =
+        _cache.rawTransactionDataByYear || {};
+      _cache.rawTransactionDataByYear[year] = transactions.map(
+        (tx) => {
+          let month = 0;
+          if (tx.date) {
+            const m = String(tx.date).match(/\d{4}[-\/.](\d{1,2})/);
+            if (m) month = Number(m[1]);
+          }
+          if (!(month >= 1 && month <= 12)) {
+            month = Number(tx.month) || 0;
+          }
+          return {
+            date: tx.date,
+            month,
+            supplier: tx.supplier,
+            detailedGrade: tx.detailed_grade,
+            macro: tx.macro,
+            unitPrice: tx.unit_price,
+            amount: tx.amount,
+            qty: tx.qty
+          };
+        }
+      );
     } catch (err) {
       console.error(`appStorage: failed to load transactions for ${year}`, err);
     }
@@ -463,8 +510,10 @@ if (window.__supabaseConfigReady) {
 
     supabaseClient: supabase,
 
-    async setUserId(userId) {
+    async setUserId(userId, appId) {
       _userId = userId;
+      _appId = appId || userId;
+      console.log(`appStorage: setUserId userId=${userId}, appId=${_appId}`);
       // userId 설정 시 즉시 prefetch 실행 + ready resolve
       if (userId) {
         await _prefetch();
@@ -517,6 +566,7 @@ if (window.__supabaseConfigReady) {
 
     async _saveToSupabase(key, val) {
       if (!_userId || !supabase) return;
+      const uid = _dbUid();
 
       try {
         const dbVal = _toDBFormat(key, val);
@@ -528,7 +578,7 @@ if (window.__supabaseConfigReady) {
               .from("notices")
               .upsert({
                 id: notice.id,
-                user_id: _userId,
+                user_id: uid,
                 title: notice.title,
                 content: notice.content,
                 author: notice.author,
@@ -546,7 +596,7 @@ if (window.__supabaseConfigReady) {
               .from("schedules")
               .upsert({
                 id: sched.id,
-                user_id: _userId,
+                user_id: uid,
                 member: sched.member,
                 type: sched.type,
                 start_date: sched.startDate,
@@ -562,7 +612,7 @@ if (window.__supabaseConfigReady) {
             await supabase
               .from("supplier_admins")
               .upsert({
-                user_id: _userId,
+                user_id: uid,
                 code: supplier.code,
                 name: supplier.name,
                 region: supplier.region,
@@ -581,7 +631,7 @@ if (window.__supabaseConfigReady) {
           await supabase
             .from("grade_mappings")
             .upsert({
-              user_id: _userId,
+              user_id: uid,
               mappings: val
             }, { onConflict: "user_id" });
           return;
@@ -593,7 +643,7 @@ if (window.__supabaseConfigReady) {
             const { error } = await supabase
               .from("plan_data")
               .upsert({
-                user_id: _userId,
+                user_id: uid,
                 year: plan.year,
                 pasted_at: plan.pasted_at,
                 monthly: plan.monthly
@@ -611,7 +661,7 @@ if (window.__supabaseConfigReady) {
           for (const [year, transactions] of Object.entries(val)) {
             const yearNum = Number(year);
             const txRows = (transactions || []).map(tx => ({
-              user_id: _userId,
+              user_id: uid,
               year: yearNum,
               date: tx.date,
               month: tx.month,
@@ -627,7 +677,7 @@ if (window.__supabaseConfigReady) {
             await supabase
               .from("transactions")
               .delete()
-              .eq("user_id", _userId)
+              .eq("user_id", uid)
               .eq("year", yearNum);
 
             // 새 데이터 batch insert
@@ -654,38 +704,39 @@ if (window.__supabaseConfigReady) {
 
     async _deleteFromSupabase(key) {
       if (!_userId || !supabase) return;
+      const uid = _dbUid();
 
       try {
         if (key === "noticesData") {
           await supabase
             .from("notices")
             .delete()
-            .eq("user_id", _userId);
+            .eq("user_id", uid);
         } else if (key === "schedulesData") {
           await supabase
             .from("schedules")
             .delete()
-            .eq("user_id", _userId);
+            .eq("user_id", uid);
         } else if (key === "supplierAdminItems") {
           await supabase
             .from("supplier_admins")
             .delete()
-            .eq("user_id", _userId);
+            .eq("user_id", uid);
         } else if (key === "gradeMacroMappings") {
           await supabase
             .from("grade_mappings")
             .delete()
-            .eq("user_id", _userId);
+            .eq("user_id", uid);
         } else if (key === "planClipboardDataByYear") {
           await supabase
             .from("plan_data")
             .delete()
-            .eq("user_id", _userId);
+            .eq("user_id", uid);
         } else if (key === "rawTransactionDataByYear") {
           await supabase
             .from("transactions")
             .delete()
-            .eq("user_id", _userId);
+            .eq("user_id", uid);
         }
       } catch (err) {
         throw err;
@@ -694,6 +745,11 @@ if (window.__supabaseConfigReady) {
 
     prefetchTransactionsForYear(year) {
       return _prefetchTransactionsForYear(year);
+    },
+
+    /** DB 쿼리에 사용 중인 실제 user_id 반환 */
+    getEffectiveUserId() {
+      return _dbUid();
     }
   };
 

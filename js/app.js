@@ -11,7 +11,9 @@
   if (loggedInUser && window.appStorage?.setUserId) {
     try {
       const userInfo = JSON.parse(loggedInUser);
-      await window.appStorage.setUserId(userInfo.uid || userInfo.id);
+      // uid=Supabase Auth UUID, id=앱 사용자 ID("dongkuk1")
+      // 두 값을 모두 전달하여 user_id 불일치 시 폴백 가능
+      await window.appStorage.setUserId(userInfo.uid || userInfo.id, userInfo.id);
     } catch (e) {
       console.warn("Failed to parse loggedInUser:", e);
     }
@@ -2348,10 +2350,14 @@ function runMainApp() {
     // Supabase에서 해당 연도 행 직접 DELETE
     if (window.appStorage && window.appStorage.supabaseClient) {
       try {
-        await window.appStorage.supabaseClient
-          .from("transactions")
-          .delete()
-          .eq("year", Number(year));
+        const uid = window.appStorage.getEffectiveUserId?.() || "";
+        if (uid) {
+          await window.appStorage.supabaseClient
+            .from("transactions")
+            .delete()
+            .eq("user_id", uid)
+            .eq("year", Number(year));
+        }
       } catch (err) {
         console.error("clearRawTransactionOverride: Supabase delete failed", err);
       }

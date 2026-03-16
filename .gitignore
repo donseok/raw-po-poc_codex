@@ -1,3 +1,4 @@
 .analysis_assets/
 scripts/__pycache__/
 .DS_Store
+config.json
