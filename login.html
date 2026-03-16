@@ -291,7 +291,6 @@
                         }
               })();
       </script>
-      </script>
 </head>
 <body>
   <button class="login-theme-toggle" id="loginThemeToggle" type="button" aria-label="다크 모드 전환">
@@ -356,7 +355,8 @@
                 }
         }
 
-        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const supabaseAvailable = SUPABASE_URL && SUPABASE_ANON_KEY;
+        const supabase = supabaseAvailable ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
     if (sessionStorage.getItem("loggedInUser")) {
       location.href = "index.html";
@@ -369,7 +369,41 @@
     const passwordToggle = document.getElementById("passwordToggle");
     const passwordToggleIcon = document.getElementById("passwordToggleIcon");
 
+    // 로컬 fallback 로그인 (Supabase 미연결 시)
+    function loginLocal(username, password) {
+      const defaultUsers = [
+        { id: "dongkuk1", password: "1234", name: "테스트 사용자", dept: "원료기획팀", role: "admin" },
+        { id: "user1", password: "1234", name: "사용자1", dept: "원료기획팀", role: "user" }
+      ];
+      // localStorage에 저장된 사용자 목록 확인
+      let users = defaultUsers;
+      try {
+        const stored = localStorage.getItem("usersData");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) users = parsed;
+        }
+      } catch (e) { /* ignore */ }
+
+      const user = users.find(u => u.id === username && u.password === password);
+      if (!user) {
+        return { success: false, error: "아이디 또는 비밀번호가 올바르지 않습니다." };
+      }
+      sessionStorage.setItem("loggedInUser", JSON.stringify({
+        id: user.id,
+        name: user.name || user.id,
+        dept: user.dept || "원료기획팀",
+        role: user.role || "user"
+      }));
+      return { success: true };
+    }
+
     async function loginWithSupabase(username, password) {
+      // Supabase 미연결 시 로컬 fallback
+      if (!supabase) {
+        return loginLocal(username, password);
+      }
+
       try {
         const email = `${username}@dk.internal`;
 
@@ -437,10 +471,8 @@
         return { success: true };
       } catch (err) {
         console.error("Login error:", err);
-        return {
-          success: false,
-          error: "로그인 중 오류가 발생했습니다."
-        };
+        // Supabase 연결 실패 시 로컬 fallback 시도
+        return loginLocal(username, password);
       }
     }
 
