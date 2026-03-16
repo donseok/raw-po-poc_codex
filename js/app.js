@@ -2284,19 +2284,14 @@ function runMainApp() {
         parseRawTransactionTextAsync(rawText, (progress) => {
           const pct = Math.round(progress * 100);
           if (pct % 20 === 0) window.showToast?.(`처리 중... ${pct}%`, "info");
-        }).then(async (parsed) => {
+        }).then((parsed) => {
           state.rawTransactionsByYear[getSelectedYear()] = parsed;
           _invalidateTxCache();
-          try {
-            await saveRawTransactions();
-            window.showToast?.(`✓ 원본 실적 데이터 ${formatNumber(parsed.length)}건을 반영하고 데이터베이스에 저장했습니다.`, "success");
-          } catch (saveError) {
-            window.showToast?.(`데이터 저장 중 오류: ${saveError.message || "Unknown error"}`, "error");
-            console.error("Save error:", saveError);
-          }
+          state._rawAppliedButNotSaved = true;
           syncRawPasteInputForYear();
           updateRawPasteStatus();
           renderActiveTab(document.querySelector(".tab-content.active")?.id.replace("tab-", "") || "plan");
+          window.showToast?.(`적용 완료 (${formatNumber(parsed.length)}건). 저장 버튼을 눌러 DB에 반영하세요.`, "info");
         }).catch((error) => {
           window.showToast?.(error.message || "원본 실적 데이터를 읽지 못했습니다.", "error");
         });
@@ -2304,35 +2299,80 @@ function runMainApp() {
         const parsed = parseRawTransactionText(rawText);
         state.rawTransactionsByYear[getSelectedYear()] = parsed;
         _invalidateTxCache();
-        (async () => {
-          try {
-            await saveRawTransactions();
-            window.showToast?.(`✓ 원본 실적 데이터를 반영하고 데이터베이스에 저장했습니다.`, "success");
-          } catch (saveError) {
-            window.showToast?.(`데이터 저장 중 오류: ${saveError.message || "Unknown error"}`, "error");
-            console.error("Save error:", saveError);
-          }
-          syncRawPasteInputForYear();
-          updateRawPasteStatus();
-          renderActiveTab(document.querySelector(".tab-content.active")?.id.replace("tab-", "") || "plan");
-        })();
+        state._rawAppliedButNotSaved = true;
+        syncRawPasteInputForYear();
+        updateRawPasteStatus();
+        renderActiveTab(document.querySelector(".tab-content.active")?.id.replace("tab-", "") || "plan");
+        window.showToast?.("적용 완료. 저장 버튼을 눌러 DB에 반영하세요.", "info");
       }
     } catch (error) {
       window.showToast?.(error.message || "원본 실적 데이터를 읽지 못했습니다.", "error");
     }
   }
 
-  function resetRawPasteInput() {
-    delete state.rawTransactionsByYear[getSelectedYear()];
+  async function saveRawToDB() {
+    if (!state._rawAppliedButNotSaved) {
+      window.showToast?.("먼저 '원본 데이터 반영' 버튼을 눌러주세요.", "error");
+      return;
+    }
+    try {
+      window.showToast?.("데이터를 저장 중입니다...", "info");
+      await saveRawTransactions();
+      state._rawAppliedButNotSaved = false;
+      window.showToast?.("저장 되었습니다.", "success");
+    } catch (error) {
+      console.error("Raw transaction DB save error:", error);
+      window.showToast?.("데이터 저장 중 오류가 발생했습니다: " + (error.message || "Unknown error"), "error");
+    }
+  }
+
+  async function clearRawTransactionOverride() {
+    const year = getSelectedYear();
+    delete state.rawTransactionsByYear[year];
     _invalidateTxCache();
+
+    // Supabase에서 해당 연도 행 직접 DELETE
+    if (window.appStorage && window.appStorage.supabaseClient) {
+      try {
+        await window.appStorage.supabaseClient
+          .from("transactions")
+          .delete()
+          .eq("year", Number(year));
+      } catch (err) {
+        console.error("clearRawTransactionOverride: Supabase delete failed", err);
+      }
+    }
+
+    // 로컬 저장소 동기화
+    if (Object.keys(state.rawTransactionsByYear).length) {
+      if (window.appStorage) {
+        await window.appStorage.set(RAW_TRANSACTION_STORAGE_KEY, state.rawTransactionsByYear);
+      } else {
+        try {
+          localStorage.setItem(RAW_TRANSACTION_STORAGE_KEY, JSON.stringify(state.rawTransactionsByYear));
+        } catch (e) {
+          console.warn("localStorage 저장 실패:", e.message);
+        }
+      }
+    } else {
+      if (window.appStorage) {
+        await window.appStorage.remove(RAW_TRANSACTION_STORAGE_KEY);
+      } else {
+        localStorage.removeItem(RAW_TRANSACTION_STORAGE_KEY);
+      }
+    }
+  }
+
+  function resetRawPasteInput() {
     window.showToast?.("데이터를 초기화 중입니다...", "info");
+    state._rawAppliedButNotSaved = false;
     (async () => {
       try {
-        await saveRawTransactions();
-        window.showToast?.("✓ 선택 연도의 원본 실적 데이터를 초기화하고 데이터베이스에 저장했습니다.", "success");
+        await clearRawTransactionOverride();
+        window.showToast?.("✓ 선택 연도의 원본 실적 데이터를 초기화했습니다.", "success");
       } catch (error) {
-        window.showToast?.(`데이터 저장 중 오류: ${error.message || "Unknown error"}`, "error");
-        console.error("Save error:", error);
+        window.showToast?.(`데이터 초기화 중 오류: ${error.message || "Unknown error"}`, "error");
+        console.error("Clear error:", error);
       }
       state.rawPastePage = 0;
       syncRawPasteInputForYear();
@@ -2348,6 +2388,7 @@ function runMainApp() {
 
     const addMappingButton = document.getElementById("addMappingBtn");
     const applyRawButton = document.getElementById("applyRawPasteBtn");
+    const saveRawButton = document.getElementById("saveRawToDBBtn");
     const resetRawButton = document.getElementById("resetRawPasteBtn");
 
     addMappingButton?.addEventListener("click", () => {
@@ -2379,6 +2420,7 @@ function runMainApp() {
     });
 
     applyRawButton?.addEventListener("click", applyRawPasteInput);
+    saveRawButton?.addEventListener("click", saveRawToDB);
     resetRawButton?.addEventListener("click", resetRawPasteInput);
 
     const grid = document.getElementById("rawPasteGrid");
