@@ -4536,6 +4536,273 @@ function runMainApp() {
       "포항: 계획 " + formatNumber(allocation.pohang.planTotal) + "톤 / 실적 " + formatNumber(allocation.pohang.actualTotal) + "톤 (달성률 " + formatPercent(allocation.pohang.achievementRate, 1) + ")";
   }
 
+  // ── Step 3: DB 쿼리 헬퍼 (60초 캐시, 1000행 페이지네이션) ──
+  var _chatDbCache = {};
+  async function chatQueryDB(table, year) {
+    var supabase = window.appStorage && window.appStorage.supabaseClient;
+    var uid = window.appStorage && window.appStorage.getEffectiveUserId ? window.appStorage.getEffectiveUserId() : null;
+    if (!supabase || !uid) return null;
+
+    var cacheKey = table + ":" + year + ":" + uid;
+    var cached = _chatDbCache[cacheKey];
+    if (cached && (Date.now() - cached.ts < 60000)) return cached.rows;
+
+    try {
+      var allRows = [];
+      var from = 0;
+      var batchSize = 1000;
+      while (true) {
+        var resp = await supabase
+          .from(table)
+          .select("*")
+          .eq("user_id", uid)
+          .eq("year", Number(year))
+          .order("date", { ascending: true })
+          .range(from, from + batchSize - 1);
+        if (resp.error || !resp.data || resp.data.length === 0) break;
+        allRows = allRows.concat(resp.data);
+        if (resp.data.length < batchSize) break;
+        from += batchSize;
+      }
+      if (!allRows.length) return null;
+
+      // snake_case → camelCase 변환
+      var rows = [];
+      for (var i = 0; i < allRows.length; i++) {
+        var tx = allRows[i];
+        var month = 0;
+        if (tx.date) {
+          var m = String(tx.date).match(/\d{4}[-\/.](\d{1,2})/);
+          if (m) month = Number(m[1]);
+        }
+        if (!(month >= 1 && month <= 12)) month = Number(tx.month) || 0;
+        rows.push({
+          date: tx.date, month: month,
+          supplier: tx.supplier,
+          detailedGrade: tx.detailed_grade,
+          macro: tx.macro,
+          unitPrice: tx.unit_price,
+          amount: tx.amount,
+          qty: tx.qty
+        });
+      }
+      _chatDbCache[cacheKey] = { rows: rows, ts: Date.now() };
+      return rows;
+    } catch (e) {
+      console.warn("chatQueryDB error:", e);
+      return null;
+    }
+  }
+
+  // ── Step 4a: DB 행 기반 구매실적 답변 빌더 ──
+  function buildChatPurchaseFromRows(rows, query, yearLabel) {
+    // 월별 집계
+    var byMonth = {};
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      var mi = r.month - 1; // 0-based
+      if (mi < 0 || mi > 11) continue;
+      if (!byMonth[mi]) byMonth[mi] = { qty: 0, amount: 0, priceSum: 0, count: 0, suppliers: {} };
+      byMonth[mi].qty += (r.qty || 0);
+      byMonth[mi].amount += (r.amount || 0);
+      byMonth[mi].priceSum += (r.unitPrice || 0);
+      byMonth[mi].count += 1;
+      if (r.supplier) byMonth[mi].suppliers[r.supplier] = true;
+    }
+
+    var monthly = [];
+    for (var m = 0; m < 12; m++) {
+      var d = byMonth[m];
+      if (!d) { monthly.push({ month: (m + 1) + "월", qty: 0, amount: 0, avgUnitPrice: 0, supplierCount: 0 }); continue; }
+      monthly.push({
+        month: (m + 1) + "월",
+        qty: d.qty,
+        amount: d.amount,
+        avgUnitPrice: d.qty ? roundNumber(d.amount / d.qty, 1) : 0,
+        supplierCount: Object.keys(d.suppliers).length
+      });
+    }
+
+    // 단일 월
+    if (query.months.length === 1) {
+      var row = monthly[query.months[0]];
+      if (!row || !row.qty) return null;
+      return row.month + " 구매실적 (DB)\n" +
+        "입고량: " + formatNumber(row.qty) + "톤\n" +
+        "입고금액: " + formatCompact(row.amount) + "\n" +
+        "평균 단가: " + formatNumber(row.avgUnitPrice, 1) + "\n" +
+        "거래처 수: " + row.supplierCount + "곳";
+    }
+
+    // 범위
+    var rm = chatRangeMonths(query);
+    if (rm && rm.length > 0 && (query.range || query.months.length > 1)) {
+      var rangeRows = rm.map(function (mi) { return monthly[mi]; }).filter(function (r) { return r && r.qty; });
+      if (!rangeRows.length) return null;
+      var sumQty = rangeRows.reduce(function (s, r) { return s + r.qty; }, 0);
+      var sumAmt = rangeRows.reduce(function (s, r) { return s + r.amount; }, 0);
+      var avgPrice = sumQty ? roundNumber(sumAmt / sumQty, 1) : 0;
+      var label = chatRangeLabel(query);
+      var detail = yearLabel + " " + label + " 구매실적 (DB)\n" +
+        "입고량: " + formatCompact(sumQty) + "\n" +
+        "입고금액: " + formatCompact(sumAmt) + "\n" +
+        "평균 단가: " + formatNumber(avgPrice, 1);
+      if (rangeRows.length <= 6) {
+        detail += "\n\n[월별 상세]";
+        rangeRows.forEach(function (r) {
+          detail += "\n" + r.month + ": " + formatCompact(r.qty) + " / " + formatCompact(r.amount) + " (단가 " + formatNumber(r.avgUnitPrice, 1) + ")";
+        });
+      }
+      return detail;
+    }
+
+    // 비교
+    if (query.flags.compare) {
+      var filled = monthly.filter(function (r) { return r.qty > 0; });
+      if (!filled.length) return null;
+      var peak = filled.slice().sort(function (a, b) { return b.qty - a.qty; })[0];
+      var low = filled.slice().sort(function (a, b) { return a.qty - b.qty; })[0];
+      return yearLabel + " 구매 비교 (DB)\n" +
+        "최대 입고: " + peak.month + " (" + formatCompact(peak.qty) + ", 단가 " + formatNumber(peak.avgUnitPrice, 1) + ")\n" +
+        "최소 입고: " + low.month + " (" + formatCompact(low.qty) + ", 단가 " + formatNumber(low.avgUnitPrice, 1) + ")";
+    }
+
+    // 추이
+    if (query.flags.trend) {
+      var trendDetail = yearLabel + " 월별 구매 추이 (DB)";
+      monthly.forEach(function (r) {
+        if (r.qty > 0) trendDetail += "\n" + r.month + ": " + formatCompact(r.qty) + " (단가 " + formatNumber(r.avgUnitPrice, 1) + ")";
+      });
+      return trendDetail;
+    }
+
+    // 기본: 누계
+    var totalQty = rows.reduce(function (s, r) { return s + (r.qty || 0); }, 0);
+    var totalAmt = rows.reduce(function (s, r) { return s + (r.amount || 0); }, 0);
+    var avgUp = totalQty ? roundNumber(totalAmt / totalQty, 1) : 0;
+    if (!totalQty) return null;
+    return yearLabel + " 구매실적 누계 (DB)\n" +
+      "입고량: " + formatCompact(totalQty) + "\n" +
+      "입고금액: " + formatCompact(totalAmt) + "\n" +
+      "평균 매입 단가: " + formatNumber(avgUp, 1);
+  }
+
+  // ── Step 4b: DB 행 기반 거래처 답변 빌더 ──
+  function buildChatSupplierFromRows(rows, query, yearLabel) {
+    if (query.supplierName) {
+      var filtered = rows.filter(function (r) { return r.supplier === query.supplierName; });
+      if (!filtered.length) return null;
+      var totalQty = 0, totalAmt = 0;
+      var byMonth = {};
+      for (var i = 0; i < filtered.length; i++) {
+        totalQty += (filtered[i].qty || 0);
+        totalAmt += (filtered[i].amount || 0);
+        var mi = filtered[i].month;
+        if (mi >= 1 && mi <= 12) byMonth[mi] = (byMonth[mi] || 0) + (filtered[i].qty || 0);
+      }
+      var avgUp = totalQty ? roundNumber(totalAmt / totalQty, 1) : 0;
+      var result = query.supplierName + " 거래처 현황 (DB)\n" +
+        "연간 입고량: " + formatCompact(totalQty) + "\n" +
+        "연간 입고금액: " + formatCompact(totalAmt) + "\n" +
+        "평균 단가: " + formatNumber(avgUp, 1);
+      var monthKeys = Object.keys(byMonth).sort(function (a, b) { return a - b; });
+      if (monthKeys.length) {
+        result += "\n\n[월별 입고량]";
+        monthKeys.forEach(function (m) { result += "\n" + m + "월: " + formatCompact(byMonth[m]); });
+      }
+      return result;
+    }
+
+    // 전체 업체별 집계
+    var bySup = {};
+    var grandTotal = 0;
+    for (var j = 0; j < rows.length; j++) {
+      var s = rows[j].supplier || "기타";
+      if (!bySup[s]) bySup[s] = { qty: 0, amount: 0 };
+      bySup[s].qty += (rows[j].qty || 0);
+      bySup[s].amount += (rows[j].amount || 0);
+      grandTotal += (rows[j].qty || 0);
+    }
+    var supList = Object.keys(bySup).map(function (name) {
+      return { supplier: name, qty: bySup[name].qty, amount: bySup[name].amount };
+    }).sort(function (a, b) { return b.qty - a.qty; });
+
+    if (!supList.length) return null;
+    var res = yearLabel + " 거래처별 실적 (DB)\n" +
+      "거래처 수: " + supList.length + "개사\n" +
+      "총 입고량: " + formatCompact(grandTotal);
+    supList.forEach(function (s) {
+      var share = grandTotal ? roundNumber((s.qty / grandTotal) * 100, 1) : 0;
+      var avgP = s.qty ? roundNumber(s.amount / s.qty, 1) : 0;
+      res += "\n\n" + s.supplier + ": " + formatCompact(s.qty) +
+        " (점유율 " + formatPercent(share, 1) + ", 단가 " + formatNumber(avgP, 1) + ")";
+    });
+    return res;
+  }
+
+  // ── Step 4c: DB 행 기반 등급 답변 빌더 ──
+  function buildChatGradeFromRows(rows, query, yearLabel) {
+    var byMacro = {};
+    var total = 0;
+    for (var i = 0; i < rows.length; i++) {
+      var macro = rows[i].macro || "기타";
+      byMacro[macro] = (byMacro[macro] || 0) + (rows[i].qty || 0);
+      total += (rows[i].qty || 0);
+    }
+    if (!total) return null;
+
+    var macroOrder = ["국고상", "국고중", "국고하", "선반설", "기타"];
+    var result = yearLabel + " 등급별 비중 (DB)";
+    macroOrder.forEach(function (cat) {
+      var qty = byMacro[cat] || 0;
+      var share = total ? roundNumber((qty / total) * 100, 2) : 0;
+      result += "\n" + cat + ": " + formatPercent(share, 2) + " (" + formatNumber(qty) + "톤)";
+    });
+    // 기타 매크로 (macroOrder에 없는 것)
+    Object.keys(byMacro).forEach(function (cat) {
+      if (macroOrder.indexOf(cat) === -1) {
+        var qty = byMacro[cat];
+        var share = total ? roundNumber((qty / total) * 100, 2) : 0;
+        result += "\n" + cat + ": " + formatPercent(share, 2) + " (" + formatNumber(qty) + "톤)";
+      }
+    });
+
+    // 국고하 + 선반설 비율
+    var lowTurning = (byMacro["국고하"] || 0) + (byMacro["선반설"] || 0);
+    var ltRatio = total ? roundNumber((lowTurning / total) * 100, 2) : 0;
+    result += "\n\n국고하+선반설 비율: " + formatPercent(ltRatio, 2);
+    return result;
+  }
+
+  // ── Step 5: 비동기 오케스트레이터 ──
+  async function generateVerifiedChatResponseAsync(text) {
+    var query = parseVerifiedChatQuery(text);
+    var year = getSelectedYear();
+    var yearLabel = year + "년";
+    var intentOrder = getVerifiedChatIntentOrder(query);
+
+    // 상위 2개 인텐트에 대해 DB 쿼리 시도
+    var dbIntents = ["purchase", "supplier", "grade"];
+    for (var idx = 0; idx < Math.min(intentOrder.length, 2); idx++) {
+      var intent = intentOrder[idx];
+      if (dbIntents.indexOf(intent) === -1) continue;
+
+      var dbRows = await chatQueryDB("transactions", year);
+      if (!dbRows || !dbRows.length) break; // DB 데이터 없으면 폴백
+
+      var answer = null;
+      switch (intent) {
+        case "purchase": answer = buildChatPurchaseFromRows(dbRows, query, yearLabel); break;
+        case "supplier": answer = buildChatSupplierFromRows(dbRows, query, yearLabel); break;
+        case "grade": answer = buildChatGradeFromRows(dbRows, query, yearLabel); break;
+      }
+      if (verifyGeneratedChatAnswer(answer)) return answer;
+    }
+
+    // 폴백: 기존 동기 경로
+    return generateVerifiedChatResponse(text);
+  }
+
   function verifyGeneratedChatAnswer(answer) {
     return typeof answer === "string" && answer.trim().length > 0 && !/undefined|null|NaN/.test(answer);
   }
@@ -4572,12 +4839,13 @@ function runMainApp() {
       "- \"전체 현황 요약\"";
   }
 
-  function addChatMessage(container, text, role) {
+  function addChatMessage(container, text, role, returnEl) {
     const div = document.createElement("div");
     div.className = "chatbot-msg " + role;
     div.textContent = text;
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
+    if (returnEl) return div;
   }
 
   function renderChatSuggestions(messages, handleChatSend) {
@@ -4621,15 +4889,30 @@ function runMainApp() {
       renderChatSuggestions(messages, handleChatSend);
     }
 
-    function handleChatSend(text) {
+    async function handleChatSend(text) {
       const question = (text || input.value).trim();
       if (!question) { return; }
       input.value = "";
       const chipContainer = messages.querySelector(".chatbot-suggestions");
       if (chipContainer) { chipContainer.remove(); }
       addChatMessage(messages, question, "user");
-      const answer = generateVerifiedChatResponse(question);
-      addChatMessage(messages, answer, "bot");
+
+      const loadingDiv = addChatMessage(messages, "데이터베이스 조회 중...", "bot", true);
+      loadingDiv.classList.add("loading");
+      sendBtn.disabled = true;
+      input.disabled = true;
+
+      try {
+        const answer = await generateVerifiedChatResponseAsync(question);
+        loadingDiv.textContent = answer;
+      } catch (e) {
+        loadingDiv.textContent = generateVerifiedChatResponse(question);
+      }
+
+      loadingDiv.classList.remove("loading");
+      sendBtn.disabled = false;
+      input.disabled = false;
+      messages.scrollTop = messages.scrollHeight;
     }
 
     fab.addEventListener("click", togglePopup);
