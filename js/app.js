@@ -3362,7 +3362,7 @@ function runMainApp() {
         "accent"
       ),
       kpiCard(
-        "구매량/입고금액 비율",
+        "평균매입단가",
         `${purchasesData?.totalAmount ? formatNumber(totalPurchaseQty / (purchasesData.totalAmount / 1000000), 2) : "—"}<small>톤/백만원</small>`,
         `월별 구매량 총합 / 누계입고금액`,
         "success"
@@ -3811,7 +3811,7 @@ function runMainApp() {
     const pData = getPurchasesData();
     const totalQty = gData.mix.reduce((s, r) => s + r.qty, 0);
     children.push(docxKpiTable([
-      { label: "구매량/입고금액 비율", value: `${pData?.totalAmount ? formatNumber(totalQty / (pData.totalAmount / 1000000), 2) : "—"} 톤/백만원` },
+      { label: "구매량/입고금액 비율", value: `${pData?.totalAmount ? formatNumber(totalQty / (pData.totalAmount / 1000000), 2) : "—"} 백만원` },
       { label: "국고하+선반설 비율", value: formatPercent(gData.lowTurningRatio, 2) + (gData.compareLowTurningRatio > 0 ? " (전년 " + formatPercent(gData.compareLowTurningRatio, 2) + ")" : "") }
     ]));
     children.push(docxSpacer());
