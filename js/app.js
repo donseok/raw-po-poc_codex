@@ -3940,9 +3940,17 @@ function runMainApp() {
       const blob = await docx.Packer.toBlob(doc);
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
-      link.download = `동국제강_원료기획팀_${year}년_보고서_${today}.docx`;
+      const fileBaseName = `동국제강_원료기획팀_${year}년_보고서_${today}`;
+      link.download = `${fileBaseName}.docx`;
       link.click();
       URL.revokeObjectURL(link.href);
+
+      // Excel 파일도 함께 내보내기
+      try {
+        exportExcel(fileBaseName);
+      } catch (xlsxErr) {
+        console.error("Excel export error:", xlsxErr);
+      }
     } catch (err) {
       console.error("DOCX export error:", err);
       alert("보고서 생성 중 오류가 발생했습니다. 콘솔을 확인해 주세요.");
@@ -3950,6 +3958,284 @@ function runMainApp() {
       exportBtn.textContent = originalLabel;
       exportBtn.disabled = false;
     }
+  }
+
+  /* ── Excel 내보내기 ── */
+  function exportExcel(fileBaseName) {
+    if (!window.XLSX) {
+      console.warn("SheetJS 라이브러리가 로드되지 않아 Excel 내보내기를 건너뜁니다.");
+      return;
+    }
+
+    const XLSX = window.XLSX;
+    const wb = XLSX.utils.book_new();
+
+    const HEADER_STYLE = { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "1A237E" } }, alignment: { horizontal: "center", vertical: "center" }, border: { top: { style: "thin", color: { rgb: "E0E0E0" } }, bottom: { style: "thin", color: { rgb: "E0E0E0" } }, left: { style: "thin", color: { rgb: "E0E0E0" } }, right: { style: "thin", color: { rgb: "E0E0E0" } } } };
+    const CELL_STYLE = { border: { top: { style: "thin", color: { rgb: "E0E0E0" } }, bottom: { style: "thin", color: { rgb: "E0E0E0" } }, left: { style: "thin", color: { rgb: "E0E0E0" } }, right: { style: "thin", color: { rgb: "E0E0E0" } } }, alignment: { vertical: "center" } };
+    const NUM_STYLE = { ...CELL_STYLE, numFmt: "#,##0", alignment: { horizontal: "right", vertical: "center" } };
+    const PCT_STYLE = { ...CELL_STYLE, numFmt: "0.0%", alignment: { horizontal: "right", vertical: "center" } };
+    const TITLE_STYLE = { font: { bold: true, sz: 14, color: { rgb: "1A237E" } } };
+    const KPI_LABEL_STYLE = { font: { bold: true, color: { rgb: "555555" } }, fill: { fgColor: { rgb: "F8F9FA" } }, border: { top: { style: "thin", color: { rgb: "E0E0E0" } }, bottom: { style: "thin", color: { rgb: "E0E0E0" } }, left: { style: "thin", color: { rgb: "E0E0E0" } }, right: { style: "thin", color: { rgb: "E0E0E0" } } } };
+    const KPI_VAL_STYLE = { font: { bold: true, sz: 12, color: { rgb: "1A237E" } }, fill: { fgColor: { rgb: "F8F9FA" } }, border: { top: { style: "thin", color: { rgb: "E0E0E0" } }, bottom: { style: "thin", color: { rgb: "E0E0E0" } }, left: { style: "thin", color: { rgb: "E0E0E0" } }, right: { style: "thin", color: { rgb: "E0E0E0" } } }, alignment: { horizontal: "right" } };
+
+    function applyStyles(ws, range, headerRow) {
+      if (!ws["!ref"]) return;
+      const decoded = XLSX.utils.decode_range(ws["!ref"]);
+      for (let R = decoded.s.r; R <= decoded.e.r; R++) {
+        for (let C = decoded.s.c; C <= decoded.e.c; C++) {
+          const addr = XLSX.utils.encode_cell({ r: R, c: C });
+          if (!ws[addr]) continue;
+          if (R === headerRow) {
+            ws[addr].s = HEADER_STYLE;
+          } else {
+            ws[addr].s = CELL_STYLE;
+          }
+        }
+      }
+    }
+
+    function setColWidths(ws, widths) {
+      ws["!cols"] = widths.map((w) => ({ wch: w }));
+    }
+
+    // ── 시트 1: 개요 (Overview) ──
+    const year = getSelectedYear();
+    const planData = getActivePlanData();
+    const pData = getPurchasesData();
+    const gData = getGradeImportData();
+    const supplierAdminAvg = getSupplierAdminAveragePerformance();
+
+    const overviewRows = [
+      [`동국제강 원료기획팀 — ${year}년 보고서`],
+      [],
+      ["구분", "항목", "값"]
+    ];
+
+    if (planData?.monthly?.length) {
+      const rows = planData.monthly;
+      const annualTarget = rows.reduce((s, r) => s + r.plan, 0);
+      const cumActual = rows[rows.length - 1].cumulativeActual;
+      const attRate = rows[rows.length - 1].achievementRate;
+      overviewRows.push(
+        ["부재료실적", "연간 목표 (톤)", annualTarget],
+        ["부재료실적", "누계 실적 (톤)", cumActual],
+        ["부재료실적", "달성률", attRate / 100],
+        ["부재료실적", "거래처 평균 성과율", supplierAdminAvg / 100]
+      );
+    }
+    if (pData?.monthly?.length) {
+      overviewRows.push(
+        ["구매실적", "누계 구매량 (톤)", pData.totalQty || 0],
+        ["구매실적", "누계 입고금액 (원)", pData.totalAmount || 0],
+        ["구매실적", "평균 매입 단가", pData.avgUnitPrice || 0]
+      );
+    }
+    if (gData?.comparisonTable?.length) {
+      const totalQty = gData.mix.reduce((s, r) => s + r.qty, 0);
+      overviewRows.push(
+        ["등급현황", "평균매입단가 (백만원)", pData?.totalAmount ? roundNumber(totalQty / (pData.totalAmount / 1000000), 2) : 0],
+        ["등급현황", "국고하+선반설 비율", gData.lowTurningRatio / 100]
+      );
+    }
+
+    const wsOverview = XLSX.utils.aoa_to_sheet(overviewRows);
+    wsOverview["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }];
+    if (wsOverview["A1"]) wsOverview["A1"].s = TITLE_STYLE;
+    applyStyles(wsOverview, null, 2);
+    // Format percentage cells
+    for (let R = 3; R < overviewRows.length; R++) {
+      const val = overviewRows[R][2];
+      if (typeof val === "number" && val <= 1 && overviewRows[R][1].includes("율")) {
+        const addr = XLSX.utils.encode_cell({ r: R, c: 2 });
+        if (wsOverview[addr]) wsOverview[addr].s = PCT_STYLE;
+      }
+    }
+    setColWidths(wsOverview, [14, 22, 18]);
+    XLSX.utils.book_append_sheet(wb, wsOverview, "개요");
+
+    // ── 시트 2: 부재료실적 (Plan vs Actual) ──
+    if (planData?.monthly?.length) {
+      const rows = planData.monthly;
+      const annualTarget = rows.reduce((s, r) => s + r.plan, 0);
+      const cumActual = rows[rows.length - 1].cumulativeActual;
+      const lastR = rows[rows.length - 1];
+
+      const planRows = [
+        [`${year}년 부재료실적 모니터링`],
+        [],
+        ["월", "계획 (톤)", "실적 (톤)", "누계 계획", "누계 실적", "달성률", "차이 (톤)"]
+      ];
+      rows.forEach((r) => {
+        planRows.push([
+          r.month,
+          r.plan || 0,
+          r.actual || 0,
+          r.cumulativePlan || 0,
+          r.cumulativeActual || 0,
+          r.achievementRate ? r.achievementRate / 100 : 0,
+          (r.actual || 0) - (r.plan || 0)
+        ]);
+      });
+      planRows.push([
+        "합계",
+        annualTarget,
+        cumActual,
+        lastR.cumulativePlan || 0,
+        lastR.cumulativeActual || 0,
+        lastR.achievementRate ? lastR.achievementRate / 100 : 0,
+        cumActual - annualTarget
+      ]);
+
+      const wsPlan = XLSX.utils.aoa_to_sheet(planRows);
+      wsPlan["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }];
+      if (wsPlan["A1"]) wsPlan["A1"].s = TITLE_STYLE;
+      applyStyles(wsPlan, null, 2);
+      // Apply percentage format to 달성률 column (F)
+      for (let R = 3; R < planRows.length; R++) {
+        const addr = XLSX.utils.encode_cell({ r: R, c: 5 });
+        if (wsPlan[addr]) wsPlan[addr].s = PCT_STYLE;
+      }
+      setColWidths(wsPlan, [8, 14, 14, 14, 14, 12, 14]);
+      XLSX.utils.book_append_sheet(wb, wsPlan, "부재료실적");
+    }
+
+    // ── 시트 3: 구매실적 (Purchases) ──
+    if (pData?.monthly?.length) {
+      const monthly = pData.monthly;
+      const purchaseRows = [
+        [`${year}년 구매실적`],
+        [],
+        ["월", "구매량 (톤)", "입고금액 (원)", "평균 단가", "거래처 수", "전월대비 구매량 증감"]
+      ];
+      monthly.forEach((r, idx) => {
+        const prevQty = idx > 0 ? monthly[idx - 1].qty : 0;
+        purchaseRows.push([
+          r.month,
+          r.qty || 0,
+          r.amount || 0,
+          r.avgUnitPrice || 0,
+          r.supplierCount || 0,
+          idx > 0 ? (r.qty || 0) - prevQty : 0
+        ]);
+      });
+      // 합계 행
+      const totalQty = monthly.reduce((s, r) => s + (r.qty || 0), 0);
+      const totalAmt = monthly.reduce((s, r) => s + (r.amount || 0), 0);
+      const avgPrice = totalQty > 0 ? roundNumber(totalAmt / totalQty, 1) : 0;
+      const avgSupplier = roundNumber(monthly.reduce((s, r) => s + (r.supplierCount || 0), 0) / monthly.length, 1);
+      purchaseRows.push(["합계/평균", totalQty, totalAmt, avgPrice, avgSupplier, ""]);
+
+      const wsPurchases = XLSX.utils.aoa_to_sheet(purchaseRows);
+      wsPurchases["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }];
+      if (wsPurchases["A1"]) wsPurchases["A1"].s = TITLE_STYLE;
+      applyStyles(wsPurchases, null, 2);
+      setColWidths(wsPurchases, [8, 14, 16, 14, 12, 18]);
+      XLSX.utils.book_append_sheet(wb, wsPurchases, "구매실적");
+    }
+
+    // ── 시트 4: 등급별현황 (Grade Mix) ──
+    if (gData?.comparisonTable?.length) {
+      const gradeRows = [
+        [`${year}년 등급별 현황`],
+        [],
+        ["등급", `${year}년 물량 (톤)`, `${year}년 비중`, "전년 물량 (톤)", "전년 비중", "비중 증감 (p)"]
+      ];
+      gData.comparisonTable.forEach((r) => {
+        gradeRows.push([
+          r.category,
+          r.currentQty || 0,
+          r.currentShare ? r.currentShare / 100 : 0,
+          r.compareQty || 0,
+          r.compareShare ? r.compareShare / 100 : 0,
+          r.diffShare || 0
+        ]);
+      });
+
+      const wsGrade = XLSX.utils.aoa_to_sheet(gradeRows);
+      wsGrade["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }];
+      if (wsGrade["A1"]) wsGrade["A1"].s = TITLE_STYLE;
+      applyStyles(wsGrade, null, 2);
+      // Apply percentage format to share columns (C, E)
+      for (let R = 3; R < gradeRows.length; R++) {
+        const addrC = XLSX.utils.encode_cell({ r: R, c: 2 });
+        const addrE = XLSX.utils.encode_cell({ r: R, c: 4 });
+        if (wsGrade[addrC]) wsGrade[addrC].s = PCT_STYLE;
+        if (wsGrade[addrE]) wsGrade[addrE].s = PCT_STYLE;
+      }
+      setColWidths(wsGrade, [12, 16, 12, 16, 12, 14]);
+      XLSX.utils.book_append_sheet(wb, wsGrade, "등급별현황");
+    }
+
+    // ── 시트 5: 거래처 관리 (Suppliers) ──
+    const suppliers = [...state.supplierAdminItems].sort((a, b) => a.code.localeCompare(b.code, "ko"));
+    if (suppliers.length) {
+      const supplierRows = [
+        ["거래처 관리 현황"],
+        [],
+        ["코드", "거래처명", "지역", "담당자", "월 가용량 (톤)", "연 공급량 (톤)", "신뢰등급", "납품실적 (%)"]
+      ];
+      suppliers.forEach((s) => {
+        supplierRows.push([
+          s.code,
+          s.name,
+          s.region,
+          s.owner,
+          s.monthlyCapacity || 0,
+          s.yearlySupply || 0,
+          s.trustGrade,
+          s.performanceRate ? s.performanceRate / 100 : 0
+        ]);
+      });
+
+      const wsSupplier = XLSX.utils.aoa_to_sheet(supplierRows);
+      wsSupplier["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }];
+      if (wsSupplier["A1"]) wsSupplier["A1"].s = TITLE_STYLE;
+      applyStyles(wsSupplier, null, 2);
+      // Apply percentage format to performance column (H)
+      for (let R = 3; R < supplierRows.length; R++) {
+        const addr = XLSX.utils.encode_cell({ r: R, c: 7 });
+        if (wsSupplier[addr]) wsSupplier[addr].s = PCT_STYLE;
+      }
+      setColWidths(wsSupplier, [10, 18, 10, 10, 14, 14, 10, 14]);
+      XLSX.utils.book_append_sheet(wb, wsSupplier, "거래처관리");
+    }
+
+    // ── 시트 6: 공장배분 (Allocation) ──
+    const alloc = getSectionData("allocation");
+    if (alloc?.monthly?.length) {
+      const allocRows = [
+        [`${year}년 공장배분 현황`],
+        [],
+        ["월", "인천 계획 (톤)", "인천 실적 (톤)", "인천 달성률", "포항 계획 (톤)", "포항 실적 (톤)", "포항 달성률"]
+      ];
+      alloc.monthly.forEach((r) => {
+        allocRows.push([
+          r.month,
+          r.incheonPlan || 0,
+          r.incheonActual || 0,
+          r.incheonRate ? r.incheonRate / 100 : 0,
+          r.pohangPlan || 0,
+          r.pohangActual || 0,
+          r.pohangRate ? r.pohangRate / 100 : 0
+        ]);
+      });
+
+      const wsAlloc = XLSX.utils.aoa_to_sheet(allocRows);
+      wsAlloc["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }];
+      if (wsAlloc["A1"]) wsAlloc["A1"].s = TITLE_STYLE;
+      applyStyles(wsAlloc, null, 2);
+      for (let R = 3; R < allocRows.length; R++) {
+        const addrD = XLSX.utils.encode_cell({ r: R, c: 3 });
+        const addrG = XLSX.utils.encode_cell({ r: R, c: 6 });
+        if (wsAlloc[addrD]) wsAlloc[addrD].s = PCT_STYLE;
+        if (wsAlloc[addrG]) wsAlloc[addrG].s = PCT_STYLE;
+      }
+      setColWidths(wsAlloc, [8, 14, 14, 12, 14, 14, 12]);
+      XLSX.utils.book_append_sheet(wb, wsAlloc, "공장배분");
+    }
+
+    // ── 파일 다운로드 ──
+    XLSX.writeFile(wb, `${fileBaseName}.xlsx`);
   }
 
   function attachEvents() {
