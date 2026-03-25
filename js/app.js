@@ -3363,7 +3363,7 @@ function runMainApp() {
       ),
       kpiCard(
         "평균매입단가",
-        `${purchasesData?.totalAmount ? formatNumber(totalPurchaseQty / (purchasesData.totalAmount / 1000000), 2) : "—"}<small>톤/백만원</small>`,
+        `${purchasesData?.totalAmount ? formatNumber(totalPurchaseQty / (purchasesData.totalAmount / 1000000), 2) : "—"}<small>백만원</small>`,
         `월별 구매량 총합 / 누계입고금액`,
         "success"
       ),
